@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080">
+  <!-- Icon mark only, no background badge - for use on any color -->
+  <g fill="none" stroke="#0A7A6E" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 320 220 L 320 760" stroke-width="110"/>
+    <path d="M 320 760 L 500 760 L 570 620 L 660 870 L 750 680 L 820 760 L 920 760"
+          stroke-width="78"/>
+  </g>
+</svg>
