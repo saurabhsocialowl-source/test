@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Livance — Watch Party",
+  "name": "Couch — Watch Party",
   "version": "0.1.0",
   "description": "Host synchronized Netflix watch parties with a built-in group video & audio call. Everyone shares playback controls.",
   "icons": {
@@ -10,7 +10,7 @@
   },
   "action": {
     "default_popup": "src/popup/popup.html",
-    "default_title": "Livance Watch Party",
+    "default_title": "Couch Watch Party",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",

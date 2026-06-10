@@ -1,9 +1,9 @@
 /*
- * Livance — content script (isolated world) running on netflix.com/watch/*.
+ * Couch — content script (isolated world) running on netflix.com/watch/*.
  *
  * Responsibilities:
  *   1. Inject injected.js to control the real Netflix player.
- *   2. Maintain the WebSocket connection to the Livance signaling/sync server.
+ *   2. Maintain the WebSocket connection to the Couch signaling/sync server.
  *   3. Synchronize play/pause/seek both ways (everyone shares controls).
  *   4. Run a WebRTC mesh for the group audio/video call.
  *   5. Render the in-page overlay UI.
@@ -14,8 +14,8 @@
 (function () {
   'use strict';
 
-  if (window.__livanceContent) return;
-  window.__livanceContent = true;
+  if (window.__couchContent) return;
+  window.__couchContent = true;
 
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -40,7 +40,7 @@
 
   // ------------------------------------------------------------------ utils ---
 
-  const log = (...a) => console.debug('%c[Livance]', 'color:#0FB5A3', ...a);
+  const log = (...a) => console.debug('%c[Couch]', 'color:#0FB5A3', ...a);
 
   function randomId(n = 8) {
     const c = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -60,7 +60,7 @@
       members: [state.name, ...[...state.peers.values()].map((p) => p.name)],
     };
     try {
-      chrome.storage.local.set({ livanceStatus: status });
+      chrome.storage.local.set({ couchStatus: status });
       chrome.runtime.sendMessage({ type: 'status', status }).catch(() => {});
     } catch (e) {}
   }
@@ -75,14 +75,14 @@
   }
 
   function sendToPage(msg) {
-    window.postMessage(Object.assign({ source: 'livance-content' }, msg), '*');
+    window.postMessage(Object.assign({ source: 'couch-content' }, msg), '*');
   }
 
   // Local playback events bubbling up from the page -> broadcast to peers.
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const d = event.data;
-    if (!d || d.source !== 'livance-page') return;
+    if (!d || d.source !== 'couch-page') return;
 
     if (d.type === 'state' && state.inParty && state.connected) {
       // Don't rebroadcast a state we just applied from someone else.
@@ -310,10 +310,10 @@
   function buildOverlay() {
     if (ui) return ui;
     const root = document.createElement('div');
-    root.id = 'livance-overlay';
+    root.id = 'couch-overlay';
     root.innerHTML = `
       <div class="lv-header">
-        <span class="lv-logo">Livance</span>
+        <span class="lv-logo">Couch</span>
         <span class="lv-room"></span>
         <button class="lv-collapse" title="Collapse">–</button>
       </div>
@@ -485,9 +485,9 @@
 
   // ----------------------------------------------------------- bootstrap ------
 
-  chrome.storage.local.get(['livanceServerUrl', 'livanceName'], (cfg) => {
-    if (cfg.livanceServerUrl) state.serverUrl = cfg.livanceServerUrl;
-    if (cfg.livanceName) state.name = cfg.livanceName;
+  chrome.storage.local.get(['couchServerUrl', 'couchName'], (cfg) => {
+    if (cfg.couchServerUrl) state.serverUrl = cfg.couchServerUrl;
+    if (cfg.couchName) state.name = cfg.couchName;
   });
 
   injectPageScript();

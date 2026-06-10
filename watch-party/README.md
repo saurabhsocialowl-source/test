@@ -1,4 +1,4 @@
-# Livance — Netflix Watch Party (Browser Extension)
+# Couch — Netflix Watch Party (Browser Extension)
 
 Host **synchronized Netflix watch parties** with a built-in **group video & audio call**.
 Everyone in the party shares the playback controls — when anyone plays, pauses, or
@@ -7,7 +7,7 @@ call overlay on top of Netflix.
 
 > **How it works (and the one rule):** Netflix video is DRM-protected and cannot be
 > streamed from one person to the group. Like Teleparty / Netflix Party, **every
-> participant needs their own Netflix account and must open the same title.** Livance
+> participant needs their own Netflix account and must open the same title.** Couch
 > synchronizes everyone's *playback position* and adds the call layer — it never
 > touches or rebroadcasts the video itself.
 
@@ -19,7 +19,7 @@ call overlay on top of Netflix.
 watch-party/
 ├── extension/            # Manifest V3 Chrome/Edge extension (load unpacked)
 │   ├── manifest.json
-│   ├── icons/            # Livance mark, generated at 16/48/128
+│   ├── icons/            # Couch mark, generated at 16/48/128
 │   └── src/
 │       ├── background.js     # service worker (defaults + status relay)
 │       ├── content.js        # the brain: WS connection, sync, WebRTC mesh, overlay UI
@@ -78,12 +78,12 @@ a TURN server (see *Limitations* below).
 1. Go to `chrome://extensions` (or `edge://extensions`).
 2. Enable **Developer mode**.
 3. Click **Load unpacked** and select the `watch-party/extension` folder.
-4. Pin the **Livance** icon to your toolbar.
+4. Pin the **Couch** icon to your toolbar.
 
 ### 3. Throw a party
 
 1. Open a title on Netflix and press play (URL looks like `netflix.com/watch/123…`).
-2. Click the **Livance** toolbar icon → enter your name → **Create a party**.
+2. Click the **Couch** toolbar icon → enter your name → **Create a party**.
 3. Allow the mic/camera prompt (or skip for listen-only).
 4. Copy the **invite code** and send it to your friends.
 5. Each friend opens the **same title**, clicks the icon, pastes the code, and

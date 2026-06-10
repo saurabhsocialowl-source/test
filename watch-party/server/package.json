@@ -1,8 +1,8 @@
 {
-  "name": "livance-server",
+  "name": "couch-server",
   "version": "0.1.0",
   "private": true,
-  "description": "WebSocket signaling + playback-sync relay for the Livance watch-party extension.",
+  "description": "WebSocket signaling + playback-sync relay for the Couch watch-party extension.",
   "type": "commonjs",
   "main": "server.js",
   "scripts": {

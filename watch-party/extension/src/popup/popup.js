@@ -1,4 +1,4 @@
-/* Livance popup — thin control panel that drives the content script. */
+/* Couch popup — thin control panel that drives the content script. */
 
 const $ = (sel) => document.querySelector(sel);
 const views = {
@@ -68,9 +68,9 @@ async function init() {
   activeTab = await getActiveTab();
 
   // Prefill name + server from storage.
-  const cfg = await chrome.storage.local.get(['livanceName', 'livanceServerUrl']);
-  if (cfg.livanceName) $('#name').value = cfg.livanceName;
-  $('#server-url').value = cfg.livanceServerUrl || 'ws://localhost:8080';
+  const cfg = await chrome.storage.local.get(['couchName', 'couchServerUrl']);
+  if (cfg.couchName) $('#name').value = cfg.couchName;
+  $('#server-url').value = cfg.couchServerUrl || 'ws://localhost:8080';
 
   if (!activeTab || !isNetflixWatch(activeTab.url)) {
     show(views.notNetflix);
@@ -82,7 +82,7 @@ async function init() {
 function readConfig() {
   const name = $('#name').value.trim() || 'Guest';
   const serverUrl = $('#server-url').value.trim() || 'ws://localhost:8080';
-  chrome.storage.local.set({ livanceName: name, livanceServerUrl: serverUrl });
+  chrome.storage.local.set({ couchName: name, couchServerUrl: serverUrl });
   return { name, serverUrl };
 }
 
@@ -117,8 +117,8 @@ $('#leave').onclick = async () => { await sendToContent({ type: 'leave-party' })
 
 // Live-update the party view while the popup is open.
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes.livanceStatus && !views.party.classList.contains('hidden')) {
-    renderParty(changes.livanceStatus.newValue || {});
+  if (changes.couchStatus && !views.party.classList.contains('hidden')) {
+    renderParty(changes.couchStatus.newValue || {});
   }
 });
 

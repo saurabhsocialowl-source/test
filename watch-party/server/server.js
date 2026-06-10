@@ -1,5 +1,5 @@
 /*
- * Livance signaling + sync relay server.
+ * Couch signaling + sync relay server.
  *
  * A deliberately thin WebSocket hub: it never inspects video content, it only
  * routes JSON messages between members of a room.
@@ -27,7 +27,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Livance signaling server is running.');
+  res.end('Couch signaling server is running.');
 });
 
 const wss = new WebSocketServer({ server });
@@ -144,5 +144,5 @@ const heartbeat = setInterval(() => {
 wss.on('close', () => clearInterval(heartbeat));
 
 server.listen(PORT, () => {
-  console.log(`Livance signaling server listening on :${PORT}`);
+  console.log(`Couch signaling server listening on :${PORT}`);
 });

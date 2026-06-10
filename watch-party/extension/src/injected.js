@@ -1,20 +1,20 @@
 /*
- * Livance — injected page-context script.
+ * Couch — injected page-context script.
  *
  * Runs in Netflix's main world (NOT the isolated content-script world) so it can
  * reach `netflix.appContext` and drive the real player. It talks to content.js
  * exclusively through window.postMessage.
  *
  * Protocol
- *   page  -> content : { source: 'livance-page',    type, ... }
- *   content -> page  : { source: 'livance-content', type, ... }
+ *   page  -> content : { source: 'couch-page',    type, ... }
+ *   content -> page  : { source: 'couch-content', type, ... }
  */
 (function () {
   'use strict';
 
   // Guard against double injection (SPA navigations can re-run scripts).
-  if (window.__livanceInjected) return;
-  window.__livanceInjected = true;
+  if (window.__couchInjected) return;
+  window.__couchInjected = true;
 
   // While we are applying a *remote* command we must ignore the native
   // play/pause/seek events it generates, otherwise we echo them back to peers
@@ -45,7 +45,7 @@
   }
 
   function send(msg) {
-    window.postMessage(Object.assign({ source: 'livance-page' }, msg), '*');
+    window.postMessage(Object.assign({ source: 'couch-page' }, msg), '*');
   }
 
   // ---- Apply commands coming from peers --------------------------------------
@@ -128,7 +128,7 @@
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const data = event.data;
-    if (!data || data.source !== 'livance-content') return;
+    if (!data || data.source !== 'couch-content') return;
 
     if (data.type === 'command') {
       applyCommand(data.cmd || {});
