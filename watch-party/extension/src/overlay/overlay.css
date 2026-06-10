@@ -1,5 +1,9 @@
 /* Couch in-page overlay. High z-index so it floats above Netflix chrome. */
 
+/* While docked, <body> is scaled into the remaining space; paint the area
+   behind it black so nothing shows through the gap. */
+html.couch-pinned { background: #000 !important; }
+
 #couch-overlay {
   position: fixed;
   top: 16px;
@@ -13,7 +17,6 @@
   min-height: 170px;
   max-width: 70vw;
   max-height: 95vh;
-  resize: both;            /* floating: drag bottom-right corner to resize */
   background: rgba(17, 24, 28, 0.92);
   color: #eafffb;
   border: 1px solid rgba(15, 181, 163, 0.5);
@@ -54,6 +57,26 @@
 #couch-overlay.lv-pin-left  .lv-resizer { right: 0; }
 #couch-overlay.lv-pin-right .lv-resizer:hover,
 #couch-overlay.lv-pin-left  .lv-resizer:hover { background: rgba(15, 181, 163, 0.4); }
+
+/* Floating: visible bottom-right corner grip to drag-resize (width + height). */
+#couch-overlay .lv-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  z-index: 6;
+  background:
+    linear-gradient(135deg, transparent 0 45%, rgba(15, 181, 163, 0.95) 45% 60%,
+                    transparent 60% 70%, rgba(15, 181, 163, 0.95) 70% 85%, transparent 85%);
+  border-bottom-right-radius: 12px;
+}
+#couch-overlay .lv-grip:hover { background-color: rgba(15, 181, 163, 0.25); }
+/* The corner grip is only for floating mode. */
+#couch-overlay.lv-pin-right .lv-grip,
+#couch-overlay.lv-pin-left  .lv-grip,
+#couch-overlay.lv-collapsed .lv-grip { display: none; }
 
 #couch-overlay .lv-header {
   display: flex;

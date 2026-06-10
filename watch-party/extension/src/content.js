@@ -348,6 +348,29 @@
     }, 300);
   }
 
+  // When docked, push the Netflix page into the remaining space so the panel
+  // never overlaps the video. We scale <body> (our overlay lives on <html>, a
+  // sibling of <body>, so it isn't affected) — robust to any Netflix layout.
+  function applyPagePush() {
+    const b = document.body;
+    if (!b) return;
+    const de = document.documentElement;
+    if (!state.inParty || overlayGeo.pin === 'none') {
+      b.style.transform = '';
+      b.style.transformOrigin = '';
+      b.style.transition = '';
+      de.classList.remove('couch-pinned');
+      return;
+    }
+    const w = overlayGeo.w || (ui ? ui.offsetWidth : 280);
+    const vw = window.innerWidth || 1;
+    const s = Math.max(0.2, (vw - w) / vw);
+    de.classList.add('couch-pinned');           // black backdrop behind scaled page
+    b.style.transition = 'transform 0.12s ease';
+    b.style.transformOrigin = overlayGeo.pin === 'right' ? 'top left' : 'top right';
+    b.style.transform = `scale(${s})`;
+  }
+
   function applyGeo(root) {
     applyingGeo = true;
     root.classList.remove('lv-pin-left', 'lv-pin-right');
@@ -364,6 +387,7 @@
       }
     }
     updatePinBtn(root);
+    applyPagePush();
     requestAnimationFrame(() => { applyingGeo = false; });
   }
 
@@ -403,7 +427,8 @@
         <button class="lv-btn lv-leave" title="Leave party">⏻</button>
       </div>
       <div class="lv-status"></div>
-      <div class="lv-resizer" title="Drag to resize width"></div>`;
+      <div class="lv-resizer" title="Drag to resize width"></div>
+      <div class="lv-grip" title="Drag to resize"></div>`;
     document.documentElement.appendChild(root);
 
     root.querySelector('.lv-collapse').onclick = () => root.classList.toggle('lv-collapsed');
@@ -417,22 +442,40 @@
     root.querySelector('.lv-leave').onclick = leaveParty;
 
     makeDraggable(root, root.querySelector('.lv-header'));
-    makeEdgeResizer(root, root.querySelector('.lv-resizer'));
+    makeEdgeResizer(root, root.querySelector('.lv-resizer'));    // docked: width
+    makeCornerResizer(root, root.querySelector('.lv-grip'));     // floating: w + h
 
-    // Persist size whenever the user drags the (floating) bottom-right grip or
-    // the docked edge handle. Ignore programmatic and collapsed-state changes.
-    try {
-      new ResizeObserver(() => {
-        if (applyingGeo || root.classList.contains('lv-collapsed')) return;
-        overlayGeo.w = root.offsetWidth;
-        if (overlayGeo.pin === 'none') overlayGeo.h = root.offsetHeight;
-        saveGeo();
-      }).observe(root);
-    } catch (e) {}
+    // Keep the docked panel pushing the page if the browser window is resized.
+    window.addEventListener('resize', () => { if (overlayGeo.pin !== 'none') applyPagePush(); });
 
     ui = root;
     loadGeo(() => applyGeo(root));
     return root;
+  }
+
+  // Visible bottom-corner grip — resizes the floating panel in both dimensions.
+  function makeCornerResizer(el, grip) {
+    let sx = 0, sy = 0, sw = 0, sh = 0, resizing = false;
+    grip.addEventListener('mousedown', (e) => {
+      if (overlayGeo.pin !== 'none') return; // docked uses the edge handle
+      resizing = true;
+      sx = e.clientX; sy = e.clientY; sw = el.offsetWidth; sh = el.offsetHeight;
+      e.preventDefault(); e.stopPropagation();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!resizing) return;
+      const w = Math.max(200, Math.min(window.innerWidth * 0.7, sw + (e.clientX - sx)));
+      const h = Math.max(170, Math.min(window.innerHeight * 0.95, sh + (e.clientY - sy)));
+      el.style.width = w + 'px';
+      el.style.height = h + 'px';
+    });
+    window.addEventListener('mouseup', () => {
+      if (!resizing) return;
+      resizing = false;
+      overlayGeo.w = el.offsetWidth;
+      overlayGeo.h = el.offsetHeight;
+      saveGeo();
+    });
   }
 
   function makeDraggable(el, handle) {
@@ -484,6 +527,8 @@
       const delta = overlayGeo.pin === 'right' ? startX - e.clientX : e.clientX - startX;
       const w = Math.max(200, Math.min(window.innerWidth * 0.7, startW + delta));
       el.style.width = w + 'px';
+      overlayGeo.w = w;
+      applyPagePush(); // reflow the video live as the dock width changes
     });
     window.addEventListener('mouseup', () => {
       if (!resizing) return;
@@ -576,6 +621,7 @@
     state.peer = null; state.connected = false;
     if (state.localStream) state.localStream.getTracks().forEach((t) => t.stop());
     state.localStream = null;
+    applyPagePush();                 // reset any docked page transform first
     if (ui) { ui.remove(); ui = null; }
     state.room = null; state.hostId = null;
     saveStatus();
