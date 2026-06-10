@@ -74,7 +74,18 @@ watch-party/
 
 ## Install & use
 
-### 1. Load the extension (Chrome or Edge)
+### Option A — From the Chrome Web Store (no Developer mode)
+
+To let anyone install with one click (no `chrome://extensions`, no Developer
+mode), publish it to the store. Everything is prepared — the upload package, promo
+images, privacy policy, and listing copy. See **[PUBLISHING.md](PUBLISHING.md)**
+for the full step-by-step. Build/refresh the upload zip anytime with:
+
+```bash
+./build.sh        # -> store-assets/couch-<version>.zip  (manifest at the root)
+```
+
+### Option B — Load it yourself for testing (Developer mode)
 
 1. Go to `chrome://extensions` (or `edge://extensions`).
 2. Enable **Developer mode** (top-right).

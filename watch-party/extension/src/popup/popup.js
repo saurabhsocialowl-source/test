@@ -14,11 +14,8 @@ function show(view) {
   view.classList.remove('hidden');
 }
 
-function isNetflixWatch(url) {
-  return /^https?:\/\/[^/]*netflix\.com\/watch\//.test(url || '');
-}
-
 async function getActiveTab() {
+  // Only the tab id is needed (always available without the "tabs" permission).
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab;
 }
@@ -72,11 +69,16 @@ async function init() {
   if (cfg.couchName) $('#name').value = cfg.couchName;
   if (cfg.couchBrokerHost) $('#broker-host').value = cfg.couchBrokerHost;
 
-  if (!activeTab || !isNetflixWatch(activeTab.url)) {
+  // The content script only runs on netflix.com/watch/*. If it answers our
+  // ping, we're on a watch page; otherwise show the "open Netflix" prompt.
+  // (Avoids needing the "tabs" permission to read the URL.)
+  const status = await sendToContent({ type: 'get-status' });
+  if (!status) {
     show(views.notNetflix);
     return;
   }
-  await refresh();
+  if (status.inParty) { show(views.party); renderParty(status); }
+  else show(views.lobby);
 }
 
 function readConfig() {
