@@ -41,9 +41,10 @@
     <details class="adv">
       <summary>Advanced</summary>
       <label class="field">
-        <span>Sync server</span>
-        <input id="server-url" type="text" placeholder="ws://localhost:8080" />
+        <span>Signaling broker <em>(optional)</em></span>
+        <input id="broker-host" type="text" placeholder="leave blank — uses free PeerJS cloud" />
       </label>
+      <p class="hint">Calls &amp; sync run peer-to-peer. The broker only introduces peers and is built in — nothing to host.</p>
     </details>
   </section>
 

@@ -1,15 +1,16 @@
 /*
  * Couch — content script (isolated world) running on netflix.com/watch/*.
  *
- * Responsibilities:
- *   1. Inject injected.js to control the real Netflix player.
- *   2. Maintain the WebSocket connection to the Couch signaling/sync server.
- *   3. Synchronize play/pause/seek both ways (everyone shares controls).
- *   4. Run a WebRTC mesh for the group audio/video call.
- *   5. Render the in-page overlay UI.
+ * Serverless architecture (no backend to host):
+ *   - Signaling runs over the free PeerJS public cloud broker (wss). The party
+ *     creator registers a deterministic peer id `couch-<ROOMCODE>` and acts as
+ *     the rendezvous/discovery point. Joiners reach that id with just the code.
+ *   - Once peers discover each other they form a full WebRTC mesh: a data
+ *     channel per pair carries playback sync (everyone shares controls) and a
+ *     media call per pair carries the audio/video.
  *
- * The Netflix tab stays open for the whole party, so this script (not the
- * service worker) owns all long-lived state.
+ * PeerJS is vendored and loaded as a content script before this file, exposing
+ * the global `Peer`.
  */
 (function () {
   'use strict';
@@ -23,18 +24,19 @@
   ];
 
   const state = {
-    serverUrl: 'ws://localhost:8080',
-    ws: null,
-    connected: false,
-    room: null,
+    brokerHost: '',          // '' => PeerJS public cloud
+    peer: null,
     peerId: null,
+    isHost: false,
+    room: null,
+    hostId: null,
     name: 'Guest',
     inParty: false,
+    connected: false,        // registered with the broker
     micOn: true,
     camOn: true,
     localStream: null,
-    peers: new Map(), // peerId -> { name, pc, stream, tile }
-    reconnectTimer: null,
+    members: new Map(),       // peerId -> { name, dataConn, call, stream, tile }
     lastAppliedAt: 0,
   };
 
@@ -49,15 +51,16 @@
     return s;
   }
 
+  function hostIdFor(room) { return 'couch-' + room.toUpperCase(); }
+
+  function memberStatus() {
+    return [state.name, ...[...state.members.values()].map((m) => m.name)];
+  }
+
   function saveStatus() {
     const status = {
-      inParty: state.inParty,
-      connected: state.connected,
-      room: state.room,
-      name: state.name,
-      micOn: state.micOn,
-      camOn: state.camOn,
-      members: [state.name, ...[...state.peers.values()].map((p) => p.name)],
+      inParty: state.inParty, connected: state.connected, room: state.room,
+      name: state.name, micOn: state.micOn, camOn: state.camOn, members: memberStatus(),
     };
     try {
       chrome.storage.local.set({ couchStatus: status });
@@ -78,115 +81,216 @@
     window.postMessage(Object.assign({ source: 'couch-content' }, msg), '*');
   }
 
-  // Local playback events bubbling up from the page -> broadcast to peers.
+  // Local playback events from the page -> broadcast to peers.
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const d = event.data;
     if (!d || d.source !== 'couch-page') return;
-
-    if (d.type === 'state' && state.inParty && state.connected) {
-      // Don't rebroadcast a state we just applied from someone else.
-      if (Date.now() - state.lastAppliedAt < 400) return;
-      send({
-        type: 'sync',
-        action: d.action,
-        paused: d.paused,
-        timeMs: d.timeMs,
-      });
+    if (d.type === 'state' && state.inParty) {
+      if (Date.now() - state.lastAppliedAt < 400) return; // don't echo applied state
+      broadcast({ t: 'sync', action: d.action, paused: d.paused, timeMs: d.timeMs });
     }
   });
 
-  // ----------------------------------------------------------- signaling ------
+  // ------------------------------------------------------- PeerJS plumbing ----
 
-  function send(obj) {
-    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-      state.ws.send(JSON.stringify(obj));
+  function peerOptions() {
+    const opts = { debug: 1, config: { iceServers: ICE_SERVERS } };
+    if (state.brokerHost) {
+      // Accept "host", "host:port" or "wss://host:port/path".
+      let h = state.brokerHost.replace(/^wss?:\/\//, '');
+      let path = '/';
+      const slash = h.indexOf('/');
+      if (slash !== -1) { path = h.slice(slash); h = h.slice(0, slash); }
+      const [host, port] = h.split(':');
+      opts.host = host;
+      opts.port = port ? Number(port) : 443;
+      opts.path = path;
+      opts.secure = true;
     }
+    return opts;
   }
 
-  function connect() {
-    if (state.ws && (state.ws.readyState === WebSocket.OPEN ||
-                     state.ws.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-    log('connecting to', state.serverUrl);
-    let ws;
-    try {
-      ws = new WebSocket(state.serverUrl);
-    } catch (e) {
-      scheduleReconnect();
-      return;
-    }
-    state.ws = ws;
+  function initPeer() {
+    const peer = new Peer(state.peerId, peerOptions());
+    state.peer = peer;
 
-    ws.onopen = () => {
+    peer.on('open', (id) => {
+      state.peerId = id;
       state.connected = true;
-      clearTimeout(state.reconnectTimer);
-      send({ type: 'join', room: state.room, peerId: state.peerId, name: state.name });
-      toast('Connected to party server');
-      saveStatus();
-    };
+      log('broker open as', id, state.isHost ? '(host)' : '(joiner)');
+      if (!state.isHost) connectData(state.hostId); // bootstrap discovery
+      toast(state.isHost ? 'Party ready — share the code' : 'Joined — connecting…');
+      render(); saveStatus();
+    });
 
-    ws.onclose = () => {
-      state.connected = false;
-      saveStatus();
-      if (state.inParty) scheduleReconnect();
-    };
+    peer.on('connection', (conn) => setupDataConn(conn, /*incoming*/ true));
 
-    ws.onerror = () => { try { ws.close(); } catch (e) {} };
+    peer.on('call', (call) => {
+      ensureMember(call.peer, (call.metadata && call.metadata.name));
+      call.answer(state.localStream || new MediaStream());
+      setupCall(call);
+    });
 
-    ws.onmessage = (ev) => {
-      let msg;
-      try { msg = JSON.parse(ev.data); } catch (e) { return; }
-      handleServerMessage(msg);
-    };
+    peer.on('disconnected', () => {
+      state.connected = false; saveStatus();
+      if (state.inParty) { try { peer.reconnect(); } catch (e) {} }
+    });
+
+    peer.on('error', (err) => {
+      log('peer error', err && err.type, err && err.message);
+      if (err && err.type === 'unavailable-id') {
+        toast('That code is taken — try creating again');
+      } else if (err && err.type === 'peer-unavailable') {
+        toast('Party not found — check the invite code');
+      } else if (err && err.type === 'network') {
+        toast('Signaling network hiccup — retrying…');
+      }
+    });
   }
 
-  function scheduleReconnect() {
-    if (!state.inParty) return;
-    clearTimeout(state.reconnectTimer);
-    state.reconnectTimer = setTimeout(connect, 2000);
+  // ------------------------------------------------------- mesh formation -----
+
+  function ensureMember(peerId, name) {
+    if (peerId === state.peerId) return null;
+    let m = state.members.get(peerId);
+    if (!m) {
+      m = { name: name || 'Guest', dataConn: null, call: null, stream: null, tile: null };
+      state.members.set(peerId, m);
+    } else if (name) {
+      m.name = name;
+    }
+    return m;
   }
 
-  function handleServerMessage(msg) {
-    switch (msg.type) {
-      case 'peers':
-        // Existing members already in the room when we joined.
-        (msg.peers || []).forEach((p) => ensurePeer(p.peerId, p.name, /*initiate*/ true));
-        // Ask the room for authoritative playback position so we line up.
-        send({ type: 'sync-request' });
+  // Lower peer id initiates, so exactly one side opens each connection.
+  function iInitiateTo(peerId) { return state.peerId < peerId; }
+
+  function connectData(peerId) {
+    if (peerId === state.peerId) return;
+    const m = ensureMember(peerId);
+    if (m.dataConn) return;
+    const conn = state.peer.connect(peerId, {
+      reliable: true, metadata: { name: state.name },
+    });
+    setupDataConn(conn, /*incoming*/ false);
+  }
+
+  function ensureData(peerId) {
+    const m = ensureMember(peerId);
+    if (!m || m.dataConn) return;
+    if (iInitiateTo(peerId)) connectData(peerId);
+    // else: wait for them to connect to us
+  }
+
+  function ensureMedia(peerId) {
+    const m = ensureMember(peerId);
+    if (!m || m.call) return;
+    if (iInitiateTo(peerId)) {
+      const call = state.peer.call(peerId, state.localStream || new MediaStream(), {
+        metadata: { name: state.name },
+      });
+      setupCall(call);
+    }
+    // else: wait for their incoming call
+  }
+
+  function setupDataConn(conn, incoming) {
+    const peerId = conn.peer;
+    const m = ensureMember(peerId, conn.metadata && conn.metadata.name);
+    m.dataConn = conn;
+
+    conn.on('open', () => {
+      conn.send({ t: 'hello', name: state.name });
+      ensureMedia(peerId);
+
+      if (state.isHost && incoming) {
+        // A newcomer reached the host. Introduce everyone.
+        const others = [...state.members.entries()]
+          .filter(([id]) => id !== peerId)
+          .map(([id, mm]) => ({ peerId: id, name: mm.name }));
+        conn.send({ t: 'welcome', members: others });
+        broadcastExcept(peerId, { t: 'peer-joined', peerId, name: m.name });
+      }
+      render(); saveStatus();
+    });
+
+    conn.on('data', (msg) => handleData(peerId, msg));
+
+    conn.on('close', () => dropMember(peerId, /*announce*/ state.isHost));
+    conn.on('error', () => dropMember(peerId, /*announce*/ state.isHost));
+  }
+
+  function handleData(fromId, msg) {
+    if (!msg || typeof msg !== 'object') return;
+    switch (msg.t) {
+      case 'hello':
+        ensureMember(fromId, msg.name); render(); saveStatus();
+        break;
+      case 'welcome':
+        // From the host: connect to every other existing member.
+        (msg.members || []).forEach((p) => {
+          ensureMember(p.peerId, p.name);
+          ensureData(p.peerId);
+          ensureMedia(p.peerId);
+        });
+        ensureMedia(fromId); // also bring up media with the host
+        sendTo(fromId, { t: 'sync-request' });
         render();
         break;
-
       case 'peer-joined':
-        // A newcomer arrives; the lower peerId initiates to avoid glare.
-        ensurePeer(msg.peerId, msg.name, state.peerId < msg.peerId);
+        ensureMember(msg.peerId, msg.name);
+        ensureData(msg.peerId);
+        ensureMedia(msg.peerId);
         toast(`${msg.name} joined`);
         render();
         break;
-
       case 'peer-left':
-        removePeer(msg.peerId);
-        toast(`${(state.peers.get(msg.peerId) || {}).name || 'Someone'} left`);
-        render();
+        dropMember(msg.peerId, false);
         break;
-
-      case 'signal':
-        handleSignal(msg);
-        break;
-
       case 'sync':
         applyRemoteSync(msg);
         break;
-
       case 'sync-request':
-        // Someone wants the current position; answer with ours.
         sendToPage({ type: 'request-state' });
         break;
     }
   }
 
-  // ------------------------------------------------------------- sync ---------
+  function setupCall(call) {
+    const peerId = call.peer;
+    const m = ensureMember(peerId, call.metadata && call.metadata.name);
+    m.call = call;
+    call.on('stream', (stream) => { m.stream = stream; renderPeerTile(peerId, m); });
+    call.on('close', () => { m.call = null; });
+    call.on('error', () => { m.call = null; });
+  }
+
+  function dropMember(peerId, announce) {
+    const m = state.members.get(peerId);
+    if (!m) return;
+    try { if (m.call) m.call.close(); } catch (e) {}
+    try { if (m.dataConn) m.dataConn.close(); } catch (e) {}
+    if (m.tile) m.tile.remove();
+    state.members.delete(peerId);
+    if (announce) broadcast({ t: 'peer-left', peerId });
+    render(); saveStatus();
+  }
+
+  // ----------------------------------------------------------- messaging ------
+
+  function sendTo(peerId, obj) {
+    const m = state.members.get(peerId);
+    if (m && m.dataConn && m.dataConn.open) m.dataConn.send(obj);
+  }
+  function broadcast(obj) {
+    state.members.forEach((m) => { if (m.dataConn && m.dataConn.open) m.dataConn.send(obj); });
+  }
+  function broadcastExcept(exceptId, obj) {
+    state.members.forEach((m, id) => {
+      if (id !== exceptId && m.dataConn && m.dataConn.open) m.dataConn.send(obj);
+    });
+  }
 
   function applyRemoteSync(msg) {
     state.lastAppliedAt = Date.now();
@@ -197,18 +301,16 @@
     });
   }
 
-  // ------------------------------------------------------------ WebRTC --------
+  // ------------------------------------------------------------ local media ---
 
   async function ensureLocalStream() {
     if (state.localStream) return state.localStream;
     try {
       state.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: { width: 320, height: 240 },
+        audio: true, video: { width: 320, height: 240 },
       });
     } catch (e) {
       toast('Mic/camera blocked — joining in listen-only mode');
-      // Empty stream so the call still works for the others.
       state.localStream = new MediaStream();
     }
     applyTrackToggles();
@@ -220,87 +322,6 @@
     if (!state.localStream) return;
     state.localStream.getAudioTracks().forEach((t) => (t.enabled = state.micOn));
     state.localStream.getVideoTracks().forEach((t) => (t.enabled = state.camOn));
-  }
-
-  function ensurePeer(peerId, name, initiate) {
-    if (peerId === state.peerId) return;
-    let peer = state.peers.get(peerId);
-    if (!peer) {
-      peer = { name: name || 'Guest', pc: null, stream: null, tile: null };
-      state.peers.set(peerId, peer);
-    } else {
-      peer.name = name || peer.name;
-    }
-    if (!peer.pc) createPeerConnection(peerId, peer, initiate);
-    saveStatus();
-    return peer;
-  }
-
-  async function createPeerConnection(peerId, peer, initiate) {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    peer.pc = pc;
-
-    const stream = await ensureLocalStream();
-    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-
-    pc.onicecandidate = (e) => {
-      if (e.candidate) {
-        send({ type: 'signal', to: peerId, from: state.peerId,
-               payload: { candidate: e.candidate } });
-      }
-    };
-
-    pc.ontrack = (e) => {
-      peer.stream = e.streams[0];
-      renderPeerTile(peerId, peer);
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (['failed', 'closed'].includes(pc.connectionState)) {
-        // Try to recover by tearing the tile; server presence drives rejoin.
-        renderPeerTile(peerId, peer);
-      }
-    };
-
-    if (initiate) {
-      try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        send({ type: 'signal', to: peerId, from: state.peerId,
-               payload: { sdp: pc.localDescription } });
-      } catch (e) { log('offer error', e); }
-    }
-  }
-
-  async function handleSignal(msg) {
-    const from = msg.from;
-    let peer = state.peers.get(from);
-    if (!peer) peer = ensurePeer(from, msg.name, false);
-    const pc = peer.pc || (await (createPeerConnection(from, peer, false), peer.pc));
-
-    const payload = msg.payload || {};
-    try {
-      if (payload.sdp) {
-        await peer.pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
-        if (payload.sdp.type === 'offer') {
-          const answer = await peer.pc.createAnswer();
-          await peer.pc.setLocalDescription(answer);
-          send({ type: 'signal', to: from, from: state.peerId,
-                 payload: { sdp: peer.pc.localDescription } });
-        }
-      } else if (payload.candidate) {
-        await peer.pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-      }
-    } catch (e) { log('signal error', e); }
-  }
-
-  function removePeer(peerId) {
-    const peer = state.peers.get(peerId);
-    if (!peer) return;
-    try { if (peer.pc) peer.pc.close(); } catch (e) {}
-    if (peer.tile) peer.tile.remove();
-    state.peers.delete(peerId);
-    saveStatus();
   }
 
   // ------------------------------------------------------------ overlay UI ----
@@ -375,41 +396,37 @@
     tile.classList.toggle('lv-camoff', !state.camOn);
   }
 
-  function renderPeerTile(peerId, peer) {
+  function renderPeerTile(peerId, m) {
     const root = buildOverlay();
     const tiles = root.querySelector('.lv-tiles');
-    if (!peer.tile) {
-      peer.tile = document.createElement('div');
-      peer.tile.className = 'lv-tile';
-      peer.tile.innerHTML = `<video autoplay playsinline></video><span class="lv-name"></span>`;
-      tiles.appendChild(peer.tile);
+    if (!m.tile) {
+      m.tile = document.createElement('div');
+      m.tile.className = 'lv-tile';
+      m.tile.innerHTML = `<video autoplay playsinline></video><span class="lv-name"></span>`;
+      tiles.appendChild(m.tile);
     }
-    peer.tile.querySelector('.lv-name').textContent = peer.name;
-    const v = peer.tile.querySelector('video');
-    if (peer.stream && v.srcObject !== peer.stream) v.srcObject = peer.stream;
+    m.tile.querySelector('.lv-name').textContent = m.name;
+    const v = m.tile.querySelector('video');
+    if (m.stream && v.srcObject !== m.stream) v.srcObject = m.stream;
   }
 
   function render() {
     const root = buildOverlay();
     root.querySelector('.lv-room').textContent = state.room ? `#${state.room}` : '';
-    const n = state.peers.size + 1;
+    const n = state.members.size + 1;
     root.querySelector('.lv-status').textContent =
       `${state.connected ? '🟢' : '🔴'} ${n} watching`;
     root.querySelector('.lv-mic').classList.toggle('lv-off', !state.micOn);
     root.querySelector('.lv-cam').classList.toggle('lv-off', !state.camOn);
     renderLocalTile();
-    state.peers.forEach((peer, id) => renderPeerTile(id, peer));
+    state.members.forEach((m, id) => renderPeerTile(id, m));
   }
 
   let toastTimer = null;
   function toast(text) {
     const root = buildOverlay();
     let t = root.querySelector('.lv-toast');
-    if (!t) {
-      t = document.createElement('div');
-      t.className = 'lv-toast';
-      root.appendChild(t);
-    }
+    if (!t) { t = document.createElement('div'); t.className = 'lv-toast'; root.appendChild(t); }
     t.textContent = text;
     t.classList.add('lv-show');
     clearTimeout(toastTimer);
@@ -424,28 +441,31 @@
 
   // ------------------------------------------------------- party lifecycle ----
 
-  async function joinParty({ room, name, serverUrl }) {
+  async function startParty({ room, name, brokerHost, host }) {
     state.room = (room || randomId()).toUpperCase();
     state.name = name || state.name || 'Guest';
-    state.peerId = state.peerId || randomId(12);
-    if (serverUrl) state.serverUrl = serverUrl;
+    state.brokerHost = brokerHost || '';
+    state.isHost = !!host;
+    state.hostId = hostIdFor(state.room);
+    // Host owns the rendezvous id; joiners get a unique random id.
+    state.peerId = host ? state.hostId : 'couch-' + randomId(10);
     state.inParty = true;
     await ensureLocalStream();
-    connect();
-    render();
-    saveStatus();
+    initPeer();
+    render(); saveStatus();
     return { room: state.room };
   }
 
   function leaveParty() {
     state.inParty = false;
-    send({ type: 'leave', room: state.room, peerId: state.peerId });
-    [...state.peers.keys()].forEach(removePeer);
-    try { if (state.ws) state.ws.close(); } catch (e) {}
+    broadcast({ t: 'peer-left', peerId: state.peerId });
+    [...state.members.keys()].forEach((id) => dropMember(id, false));
+    try { if (state.peer) state.peer.destroy(); } catch (e) {}
+    state.peer = null; state.connected = false;
     if (state.localStream) state.localStream.getTracks().forEach((t) => t.stop());
     state.localStream = null;
     if (ui) { ui.remove(); ui = null; }
-    state.room = null;
+    state.room = null; state.hostId = null;
     saveStatus();
   }
 
@@ -457,36 +477,30 @@
         case 'get-status':
           sendResponse({
             inParty: state.inParty, connected: state.connected, room: state.room,
-            name: state.name, micOn: state.micOn, camOn: state.camOn,
-            members: [state.name, ...[...state.peers.values()].map((p) => p.name)],
+            name: state.name, micOn: state.micOn, camOn: state.camOn, members: memberStatus(),
           });
           break;
-        case 'create-party': {
-          const r = await joinParty({ room: randomId(), name: msg.name, serverUrl: msg.serverUrl });
-          sendResponse(r);
+        case 'create-party':
+          sendResponse(await startParty({ room: randomId(), name: msg.name,
+            brokerHost: msg.brokerHost, host: true }));
           break;
-        }
-        case 'join-party': {
-          const r = await joinParty({ room: msg.room, name: msg.name, serverUrl: msg.serverUrl });
-          sendResponse(r);
+        case 'join-party':
+          sendResponse(await startParty({ room: msg.room, name: msg.name,
+            brokerHost: msg.brokerHost, host: false }));
           break;
-        }
-        case 'leave-party':
-          leaveParty();
-          sendResponse({ ok: true });
-          break;
+        case 'leave-party': leaveParty(); sendResponse({ ok: true }); break;
         case 'toggle-mic': toggleMic(); sendResponse({ micOn: state.micOn }); break;
         case 'toggle-cam': toggleCam(); sendResponse({ camOn: state.camOn }); break;
         default: sendResponse({});
       }
     })();
-    return true; // async response
+    return true;
   });
 
   // ----------------------------------------------------------- bootstrap ------
 
-  chrome.storage.local.get(['couchServerUrl', 'couchName'], (cfg) => {
-    if (cfg.couchServerUrl) state.serverUrl = cfg.couchServerUrl;
+  chrome.storage.local.get(['couchBrokerHost', 'couchName'], (cfg) => {
+    if (cfg.couchBrokerHost) state.brokerHost = cfg.couchBrokerHost;
     if (cfg.couchName) state.name = cfg.couchName;
   });
 

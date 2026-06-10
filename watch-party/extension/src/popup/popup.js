@@ -67,10 +67,10 @@ async function refresh() {
 async function init() {
   activeTab = await getActiveTab();
 
-  // Prefill name + server from storage.
-  const cfg = await chrome.storage.local.get(['couchName', 'couchServerUrl']);
+  // Prefill name + (optional) broker from storage.
+  const cfg = await chrome.storage.local.get(['couchName', 'couchBrokerHost']);
   if (cfg.couchName) $('#name').value = cfg.couchName;
-  $('#server-url').value = cfg.couchServerUrl || 'ws://localhost:8080';
+  if (cfg.couchBrokerHost) $('#broker-host').value = cfg.couchBrokerHost;
 
   if (!activeTab || !isNetflixWatch(activeTab.url)) {
     show(views.notNetflix);
@@ -81,9 +81,9 @@ async function init() {
 
 function readConfig() {
   const name = $('#name').value.trim() || 'Guest';
-  const serverUrl = $('#server-url').value.trim() || 'ws://localhost:8080';
-  chrome.storage.local.set({ couchName: name, couchServerUrl: serverUrl });
-  return { name, serverUrl };
+  const brokerHost = $('#broker-host').value.trim(); // '' => free PeerJS cloud
+  chrome.storage.local.set({ couchName: name, couchBrokerHost: brokerHost });
+  return { name, brokerHost };
 }
 
 // ---- Event wiring ----------------------------------------------------------
@@ -91,16 +91,16 @@ function readConfig() {
 $('#open-netflix').onclick = () => chrome.tabs.create({ url: 'https://www.netflix.com' });
 
 $('#create').onclick = async () => {
-  const { name, serverUrl } = readConfig();
-  const resp = await sendToContent({ type: 'create-party', name, serverUrl });
+  const { name, brokerHost } = readConfig();
+  const resp = await sendToContent({ type: 'create-party', name, brokerHost });
   if (resp) await refresh();
 };
 
 $('#join').onclick = async () => {
   const room = $('#join-code').value.trim().toUpperCase();
   if (!room) { $('#join-code').focus(); return; }
-  const { name, serverUrl } = readConfig();
-  const resp = await sendToContent({ type: 'join-party', room, name, serverUrl });
+  const { name, brokerHost } = readConfig();
+  const resp = await sendToContent({ type: 'join-party', room, name, brokerHost });
   if (resp) await refresh();
 };
 

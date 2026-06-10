@@ -1,97 +1,97 @@
 # Couch — Netflix Watch Party (Browser Extension)
 
 Host **synchronized Netflix watch parties** with a built-in **group video & audio call**.
-Everyone in the party shares the playback controls — when anyone plays, pauses, or
-seeks, everyone's player follows along, and you see and hear each other in a floating
-call overlay on top of Netflix.
+Everyone shares the playback controls — when anyone plays, pauses, or seeks, everyone's
+player follows along, and you see and hear each other in a floating call overlay on top
+of Netflix.
 
-> **How it works (and the one rule):** Netflix video is DRM-protected and cannot be
-> streamed from one person to the group. Like Teleparty / Netflix Party, **every
-> participant needs their own Netflix account and must open the same title.** Couch
-> synchronizes everyone's *playback position* and adds the call layer — it never
-> touches or rebroadcasts the video itself.
+> **Same title, own account:** Netflix video is DRM-protected and cannot be streamed from
+> one person to the group. Like Teleparty / Netflix Party, **every participant needs their
+> own Netflix account and must open the same title.** Couch synchronizes everyone's
+> *playback position* and adds the call layer — it never touches the video itself.
 
 ---
 
-## What's in here
+## No server to run — it's fully peer-to-peer
 
-```
-watch-party/
-├── extension/            # Manifest V3 Chrome/Edge extension (load unpacked)
-│   ├── manifest.json
-│   ├── icons/            # Couch mark, generated at 16/48/128
-│   └── src/
-│       ├── background.js     # service worker (defaults + status relay)
-│       ├── content.js        # the brain: WS connection, sync, WebRTC mesh, overlay UI
-│       ├── injected.js       # page-context script that drives the Netflix player API
-│       ├── overlay/          # in-page call overlay styles
-│       └── popup/            # toolbar popup: create / join / mic / cam / leave
-└── server/               # Node.js WebSocket signaling + playback-sync relay
-    ├── server.js
-    └── package.json
-```
+There is **nothing to host and no URL to manage.**
+
+- **Calls and playback-sync travel directly browser-to-browser** over WebRTC (a full
+  mesh) — the lowest-latency path there is, the same tech Discord and Meet use.
+- A tiny bit of "matchmaking" (introducing peers to each other) runs over the **free
+  PeerJS public cloud broker**, which is built into the extension. The broker is only
+  touched during the few-message handshake when someone joins; after that it is
+  completely out of the path, so it never affects sync speed.
+- The **invite code is the rendezvous address** — the party creator registers the peer
+  id `couch-<CODE>`, and joiners reach it with just the code.
+
+> Why not Netlify / serverless functions? A signaling broker needs an always-on
+> WebSocket connection, which Netlify Functions (short-lived, stateless) can't provide.
+> The PeerJS cloud sidesteps the question entirely — but if you ever want your *own*
+> private broker, host it on a platform that supports persistent WebSockets (Render,
+> Railway, Fly.io) and put its address in the popup's **Advanced** field.
 
 ### Architecture at a glance
 
 ```
    Netflix tab (you)                         Netflix tab (friend)
  ┌────────────────────┐                    ┌────────────────────┐
- │ injected.js  ⇄ Netflix player           │ injected.js  ⇄ player│
+ │ injected.js ⇄ Netflix player            │ injected.js ⇄ player │
  │     ⇅ postMessage  │                    │     ⇅                │
- │ content.js (overlay, sync, WebRTC) ◄────┼─ WebRTC mesh (A/V) ─►│ content.js
- │     ⇅ WebSocket    │                    │     ⇅                │
- └─────────┬──────────┘                    └─────────┬──────────┘
-           └──────────────► server.js ◄──────────────┘
-                  (rooms · presence · signaling · sync fan-out)
+ │ content.js  ◄────── WebRTC mesh ───────►│ content.js           │
+ │  (overlay · sync · │   data + media      │                     │
+ │   PeerJS mesh)     │   (direct P2P)      │                     │
+ └─────────┬──────────┘                    └──────────┬──────────┘
+           └────────► PeerJS cloud broker ◄───────────┘
+                      (peer introductions only)
 ```
 
-- **`injected.js`** runs in Netflix's page context so it can reach
-  `netflix.appContext…videoPlayer` to read the current time and apply
-  play/pause/seek. It echoes local user actions back to `content.js`.
-- **`content.js`** owns the WebSocket connection, fans playback state out to
-  peers, and runs a **WebRTC mesh** (each participant connects directly to every
-  other) for the audio/video call. It renders the draggable overlay.
-- **`server.js`** is a thin relay. It only routes JSON: room membership,
-  WebRTC offer/answer/ICE, and playback-sync messages. It never sees video.
+- **`injected.js`** runs in Netflix's page context to read the current time and apply
+  play/pause/seek via `netflix.appContext…videoPlayer`.
+- **`content.js`** owns the PeerJS peer, forms the mesh, fans playback state out over
+  per-peer data channels, runs the audio/video calls, and renders the overlay.
+- **`vendor/peerjs.min.js`** is the bundled PeerJS client (no remote scripts loaded).
 
 ---
 
-## Quick start
+## Files
 
-### 1. Run the sync server
-
-```bash
-cd watch-party/server
-npm install
-npm start            # listens on ws://localhost:8080  (override with PORT=...)
+```
+watch-party/
+└── extension/                 # Manifest V3 Chrome/Edge extension (load unpacked)
+    ├── manifest.json
+    ├── icons/                 # Couch sofa mark @ 16/48/128
+    └── src/
+        ├── background.js      # service worker (absorbs status pings)
+        ├── content.js         # PeerJS mesh, sync, call, overlay UI
+        ├── injected.js        # page-context Netflix player driver
+        ├── overlay/           # in-page call overlay styles
+        ├── popup/             # toolbar UI: create / join / mic / cam / leave
+        └── vendor/peerjs.min.js
 ```
 
-Health check: `curl http://localhost:8080/health` → `{"ok":true,...}`
+---
 
-For friends on other machines, host this somewhere reachable and use a `wss://`
-URL (any Node host works; put it behind TLS). Then set that URL in the popup's
-**Advanced → Sync server** field. For groups behind strict NATs you'll also want
-a TURN server (see *Limitations* below).
+## Install & use
 
-### 2. Load the extension (Chrome or Edge)
+### 1. Load the extension (Chrome or Edge)
 
 1. Go to `chrome://extensions` (or `edge://extensions`).
-2. Enable **Developer mode**.
+2. Enable **Developer mode** (top-right).
 3. Click **Load unpacked** and select the `watch-party/extension` folder.
-4. Pin the **Couch** icon to your toolbar.
+4. Pin the **Couch** (teal sofa) icon to your toolbar.
 
-### 3. Throw a party
+### 2. Throw a party
 
-1. Open a title on Netflix and press play (URL looks like `netflix.com/watch/123…`).
-2. Click the **Couch** toolbar icon → enter your name → **Create a party**.
+1. Open a title on Netflix and **press play** (URL looks like `netflix.com/watch/123…`).
+2. Click the **Couch** icon → enter your name → **Create a party**.
 3. Allow the mic/camera prompt (or skip for listen-only).
-4. Copy the **invite code** and send it to your friends.
-5. Each friend opens the **same title**, clicks the icon, pastes the code, and
-   **Join party**.
+4. **Copy the invite code** and send it to your friends.
+5. Each friend opens the **same title**, clicks the icon, pastes the code, **Join party**.
 
-Now anyone's play / pause / seek syncs to everyone, and the call overlay shows
-each participant. Use the overlay (or the popup) to mute, toggle camera, hit
-**⟳ resync** to pull everyone to your exact position, or leave.
+That's it — no installs on a server, no accounts. Anyone's play / pause / seek syncs to
+everyone, and the call overlay shows each participant. Use the overlay (or popup) to
+mute, toggle camera, hit **⟳ resync** to pull everyone to your exact position, or leave.
 
 ---
 
@@ -110,20 +110,22 @@ each participant. Use the overlay (or the popup) to mute, toggle camera, hit
 ## Limitations & notes
 
 - **Same title required per person** — DRM means we sync state, not pixels.
-- **Mesh calls** scale comfortably to ~4–6 people. Beyond that, an SFU
-  (e.g. mediasoup / LiveKit) would replace the mesh — a natural next step.
-- **NAT traversal** uses public STUN. Some networks need a **TURN** server for
-  the call to connect; add its `{ urls, username, credential }` to
-  `ICE_SERVERS` in `content.js`.
-- **Ads / intros / "Are you still watching?"** can momentarily desync a viewer;
-  the ⟳ resync button snaps everyone back together.
-- This is an MVP for personal/educational use and is **not affiliated with
-  Netflix**. Respect Netflix's Terms of Use.
+- **Mesh calls** are comfortable for ~4–6 people (each person uploads video to every
+  other). For bigger parties you'd add an SFU media server — a future enhancement.
+- **NAT traversal** uses public Google STUN. Some strict networks need a **TURN** server
+  for the *call* to connect (sync still works); add its
+  `{ urls, username, credential }` to `ICE_SERVERS` in `content.js`.
+- **Free PeerJS cloud** is rate-limited and best-effort. For heavy/regular use, run your
+  own PeerJS broker on Render/Railway/Fly and set it under **Advanced → Signaling broker**.
+- **Ads / intros / "Are you still watching?"** can momentarily desync a viewer; the
+  ⟳ resync button snaps everyone back together.
+- Not affiliated with Netflix. Respect Netflix's Terms of Use.
 
 ## Roadmap ideas
 
 - Text chat & emoji reactions in the overlay
 - Host-only vs. shared-control mode toggle
-- Screen-name avatars + active-speaker highlight
+- Active-speaker highlight + avatars
+- Optional self-hosted PeerJS broker with a one-click deploy
 - SFU backend for larger parties
 - Firefox build (MV3 manifest variant)

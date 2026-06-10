@@ -27,7 +27,7 @@
   "content_scripts": [
     {
       "matches": ["*://*.netflix.com/watch/*"],
-      "js": ["src/content.js"],
+      "js": ["src/vendor/peerjs.min.js", "src/content.js"],
       "css": ["src/overlay/overlay.css"],
       "run_at": "document_idle",
       "all_frames": false
