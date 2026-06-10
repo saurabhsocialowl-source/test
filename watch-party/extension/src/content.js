@@ -69,12 +69,11 @@
   }
 
   // --------------------------------------------------------- page bridge ------
+  // injected.js runs as a `world: "MAIN"` content script (see manifest), so no
+  // manual <script> injection is needed — and it isn't blocked by Netflix's CSP.
 
-  function injectPageScript() {
-    const s = document.createElement('script');
-    s.src = chrome.runtime.getURL('src/injected.js');
-    s.onload = () => s.remove();
-    (document.head || document.documentElement).appendChild(s);
+  function onWatchPage() {
+    return location.pathname.indexOf('/watch') === 0;
   }
 
   function sendToPage(msg) {
@@ -476,6 +475,7 @@
       switch (msg.type) {
         case 'get-status':
           sendResponse({
+            present: true, watch: onWatchPage(),
             inParty: state.inParty, connected: state.connected, room: state.room,
             name: state.name, micOn: state.micOn, camOn: state.camOn, members: memberStatus(),
           });
@@ -504,6 +504,5 @@
     if (cfg.couchName) state.name = cfg.couchName;
   });
 
-  injectPageScript();
   log('content script ready on', location.href);
 })();

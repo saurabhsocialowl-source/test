@@ -69,11 +69,10 @@ async function init() {
   if (cfg.couchName) $('#name').value = cfg.couchName;
   if (cfg.couchBrokerHost) $('#broker-host').value = cfg.couchBrokerHost;
 
-  // The content script only runs on netflix.com/watch/*. If it answers our
-  // ping, we're on a watch page; otherwise show the "open Netflix" prompt.
-  // (Avoids needing the "tabs" permission to read the URL.)
+  // The content script runs on all netflix.com pages and reports whether the
+  // current page is a watch page. No "tabs" permission / URL reading needed.
   const status = await sendToContent({ type: 'get-status' });
-  if (!status) {
+  if (!status || !status.watch) {
     show(views.notNetflix);
     return;
   }
