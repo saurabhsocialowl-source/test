@@ -327,6 +327,62 @@
 
   let ui = null;
 
+  // Persisted overlay geometry: size, floating position, and pin state.
+  const GEO_KEY = 'couchOverlay';
+  const overlayGeo = { w: null, h: null, left: null, top: null, pin: 'none' };
+  let applyingGeo = false;
+  let geoSaveTimer = null;
+
+  function loadGeo(cb) {
+    try {
+      chrome.storage.local.get([GEO_KEY], (r) => {
+        if (r && r[GEO_KEY]) Object.assign(overlayGeo, r[GEO_KEY]);
+        cb && cb();
+      });
+    } catch (e) { cb && cb(); }
+  }
+  function saveGeo() {
+    clearTimeout(geoSaveTimer);
+    geoSaveTimer = setTimeout(() => {
+      try { chrome.storage.local.set({ [GEO_KEY]: overlayGeo }); } catch (e) {}
+    }, 300);
+  }
+
+  function applyGeo(root) {
+    applyingGeo = true;
+    root.classList.remove('lv-pin-left', 'lv-pin-right');
+    root.style.width = overlayGeo.w ? overlayGeo.w + 'px' : '';
+    if (overlayGeo.pin === 'right' || overlayGeo.pin === 'left') {
+      root.classList.add(overlayGeo.pin === 'right' ? 'lv-pin-right' : 'lv-pin-left');
+      root.style.left = ''; root.style.top = ''; root.style.right = ''; root.style.height = '';
+    } else {
+      root.style.height = overlayGeo.h ? overlayGeo.h + 'px' : '';
+      if (overlayGeo.left != null) {
+        root.style.left = overlayGeo.left + 'px';
+        root.style.top = (overlayGeo.top || 0) + 'px';
+        root.style.right = 'auto';
+      }
+    }
+    updatePinBtn(root);
+    requestAnimationFrame(() => { applyingGeo = false; });
+  }
+
+  function updatePinBtn(root) {
+    const btn = root.querySelector('.lv-pin');
+    if (!btn) return;
+    btn.classList.toggle('lv-active', overlayGeo.pin !== 'none');
+    btn.title = overlayGeo.pin === 'none' ? 'Pin to right edge'
+      : overlayGeo.pin === 'right' ? 'Pinned right — click to pin left'
+      : 'Pinned left — click to unpin (float)';
+  }
+
+  function cyclePin(root) {
+    overlayGeo.pin = overlayGeo.pin === 'none' ? 'right'
+      : overlayGeo.pin === 'right' ? 'left' : 'none';
+    applyGeo(root);
+    saveGeo();
+  }
+
   function buildOverlay() {
     if (ui) return ui;
     const root = document.createElement('div');
@@ -335,6 +391,7 @@
       <div class="lv-header">
         <span class="lv-logo">Couch</span>
         <span class="lv-room"></span>
+        <button class="lv-pin" title="Pin to side">📌</button>
         <button class="lv-collapse" title="Collapse">–</button>
       </div>
       <div class="lv-tiles"></div>
@@ -345,10 +402,12 @@
         <button class="lv-btn lv-copy"  title="Copy invite code">⧉</button>
         <button class="lv-btn lv-leave" title="Leave party">⏻</button>
       </div>
-      <div class="lv-status"></div>`;
+      <div class="lv-status"></div>
+      <div class="lv-resizer" title="Drag to resize width"></div>`;
     document.documentElement.appendChild(root);
 
     root.querySelector('.lv-collapse').onclick = () => root.classList.toggle('lv-collapsed');
+    root.querySelector('.lv-pin').onclick = () => cyclePin(root);
     root.querySelector('.lv-mic').onclick = toggleMic;
     root.querySelector('.lv-cam').onclick = toggleCam;
     root.querySelector('.lv-sync').onclick = forceResync;
@@ -358,7 +417,21 @@
     root.querySelector('.lv-leave').onclick = leaveParty;
 
     makeDraggable(root, root.querySelector('.lv-header'));
+    makeEdgeResizer(root, root.querySelector('.lv-resizer'));
+
+    // Persist size whenever the user drags the (floating) bottom-right grip or
+    // the docked edge handle. Ignore programmatic and collapsed-state changes.
+    try {
+      new ResizeObserver(() => {
+        if (applyingGeo || root.classList.contains('lv-collapsed')) return;
+        overlayGeo.w = root.offsetWidth;
+        if (overlayGeo.pin === 'none') overlayGeo.h = root.offsetHeight;
+        saveGeo();
+      }).observe(root);
+    } catch (e) {}
+
     ui = root;
+    loadGeo(() => applyGeo(root));
     return root;
   }
 
@@ -366,6 +439,14 @@
     let dx = 0, dy = 0, dragging = false;
     handle.addEventListener('mousedown', (e) => {
       if (e.target.tagName === 'BUTTON') return;
+      // Dragging a docked panel detaches it back into a floating window.
+      if (overlayGeo.pin !== 'none') {
+        const r = el.getBoundingClientRect();
+        overlayGeo.pin = 'none';
+        overlayGeo.left = r.left; overlayGeo.top = r.top;
+        overlayGeo.w = r.width; overlayGeo.h = r.height;
+        applyGeo(el);
+      }
       dragging = true;
       dx = e.clientX - el.offsetLeft;
       dy = e.clientY - el.offsetTop;
@@ -377,7 +458,39 @@
       el.style.top = Math.max(0, e.clientY - dy) + 'px';
       el.style.right = 'auto';
     });
-    window.addEventListener('mouseup', () => (dragging = false));
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      overlayGeo.left = el.offsetLeft;
+      overlayGeo.top = el.offsetTop;
+      overlayGeo.pin = 'none';
+      saveGeo();
+    });
+  }
+
+  // Width handle on the inner edge, used while the panel is docked to a side.
+  function makeEdgeResizer(el, grip) {
+    let startX = 0, startW = 0, resizing = false;
+    grip.addEventListener('mousedown', (e) => {
+      if (overlayGeo.pin === 'none') return; // floating uses the CSS corner grip
+      resizing = true;
+      startX = e.clientX;
+      startW = el.offsetWidth;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!resizing) return;
+      const delta = overlayGeo.pin === 'right' ? startX - e.clientX : e.clientX - startX;
+      const w = Math.max(200, Math.min(window.innerWidth * 0.7, startW + delta));
+      el.style.width = w + 'px';
+    });
+    window.addEventListener('mouseup', () => {
+      if (!resizing) return;
+      resizing = false;
+      overlayGeo.w = el.offsetWidth;
+      saveGeo();
+    });
   }
 
   function renderLocalTile() {
