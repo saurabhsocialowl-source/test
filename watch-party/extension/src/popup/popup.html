@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>Livance</title>
+</head>
+<body>
+  <header class="hdr">
+    <img src="../../icons/icon-48.png" alt="" class="logo" />
+    <div>
+      <h1>Livance</h1>
+      <p class="tag">Netflix watch parties with video &amp; voice</p>
+    </div>
+  </header>
+
+  <!-- Shown when NOT on a Netflix /watch page -->
+  <section id="not-netflix" class="card hidden">
+    <p>Open a title on <strong>Netflix</strong> and press play, then come back here to start a party.</p>
+    <button id="open-netflix" class="btn ghost">Open Netflix</button>
+  </section>
+
+  <!-- Lobby: create or join -->
+  <section id="lobby" class="card hidden">
+    <label class="field">
+      <span>Your name</span>
+      <input id="name" type="text" maxlength="24" placeholder="Guest" />
+    </label>
+
+    <button id="create" class="btn primary">Create a party</button>
+
+    <div class="divider"><span>or join</span></div>
+
+    <label class="field">
+      <span>Invite code</span>
+      <input id="join-code" type="text" maxlength="12" placeholder="e.g. K7P2QX" autocapitalize="characters" />
+    </label>
+    <button id="join" class="btn">Join party</button>
+
+    <details class="adv">
+      <summary>Advanced</summary>
+      <label class="field">
+        <span>Sync server</span>
+        <input id="server-url" type="text" placeholder="ws://localhost:8080" />
+      </label>
+    </details>
+  </section>
+
+  <!-- In-party panel -->
+  <section id="party" class="card hidden">
+    <div class="room-row">
+      <div>
+        <span class="muted">Invite code</span>
+        <div id="room-code" class="code">——</div>
+      </div>
+      <button id="copy" class="btn ghost small">Copy</button>
+    </div>
+
+    <div id="conn" class="conn">Connecting…</div>
+
+    <div class="members">
+      <span class="muted">In the party</span>
+      <ul id="members"></ul>
+    </div>
+
+    <div class="row">
+      <button id="mic" class="btn toggle">🎤 Mic</button>
+      <button id="cam" class="btn toggle">📷 Cam</button>
+    </div>
+    <button id="leave" class="btn danger">Leave party</button>
+  </section>
+
+  <footer class="ft">Each person needs their own Netflix on the same title. Livance keeps you in sync.</footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
