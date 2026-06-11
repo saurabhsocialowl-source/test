@@ -135,6 +135,18 @@ html.couch-pinned { background: #000 !important; }
   background: #06120f;
 }
 
+#couch-overlay .lv-tile.lv-connecting::before {
+  content: "connecting…";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5fded0;
+  font-size: 11px;
+  z-index: 1;
+}
+
 #couch-overlay .lv-tile.lv-camoff video { visibility: hidden; }
 #couch-overlay .lv-tile.lv-camoff::after {
   content: "📷 off";

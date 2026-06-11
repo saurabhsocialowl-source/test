@@ -21,7 +21,40 @@
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    // Free TURN relays so media still connects through strict/symmetric NATs.
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
   ];
+
+  // Remote <video> elements carry audio, so browsers block autoplay until the
+  // page sees a user gesture. We try to play immediately and, if blocked, queue
+  // the element and resume them all on the first click/keypress on the page.
+  const pendingMedia = new Set();
+  let gestureHookInstalled = false;
+  function playMedia(v) {
+    const p = v.play();
+    if (p && p.catch) {
+      p.catch(() => {
+        pendingMedia.add(v);
+        installGestureHook();
+      });
+    }
+  }
+  function installGestureHook() {
+    if (gestureHookInstalled) return;
+    gestureHookInstalled = true;
+    toast('Click anywhere to enable party audio/video');
+    const resume = () => {
+      pendingMedia.forEach((v) => { v.play().catch(() => {}); });
+      pendingMedia.clear();
+      window.removeEventListener('click', resume, true);
+      window.removeEventListener('keydown', resume, true);
+      gestureHookInstalled = false;
+    };
+    window.addEventListener('click', resume, true);
+    window.addEventListener('keydown', resume, true);
+  }
 
   const state = {
     brokerHost: '',          // '' => PeerJS public cloud
@@ -260,9 +293,24 @@
     const peerId = call.peer;
     const m = ensureMember(peerId, call.metadata && call.metadata.name);
     m.call = call;
-    call.on('stream', (stream) => { m.stream = stream; renderPeerTile(peerId, m); });
+    call.on('stream', (stream) => {
+      log('media stream from', peerId, stream.getTracks().map((t) => t.kind).join('+'));
+      m.stream = stream;
+      renderPeerTile(peerId, m);
+    });
     call.on('close', () => { m.call = null; });
-    call.on('error', () => { m.call = null; });
+    call.on('error', (e) => { log('call error', peerId, e); m.call = null; });
+
+    // Watch ICE so we can log failures and retry once via TURN.
+    const pc = call.peerConnection;
+    if (pc) {
+      pc.addEventListener('iceconnectionstatechange', () => {
+        log('ice', peerId, pc.iceConnectionState);
+        if (pc.iceConnectionState === 'failed') {
+          try { pc.restartIce && pc.restartIce(); } catch (e) {}
+        }
+      });
+    }
   }
 
   function dropMember(peerId, announce) {
@@ -306,10 +354,12 @@
     if (state.localStream) return state.localStream;
     try {
       state.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true, video: { width: 320, height: 240 },
+        audio: true,
+        video: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 24 } },
       });
     } catch (e) {
-      toast('Mic/camera blocked — joining in listen-only mode');
+      log('getUserMedia failed:', e && e.name, e && e.message);
+      toast('Mic/camera unavailable — joining in listen-only mode');
       state.localStream = new MediaStream();
     }
     applyTrackToggles();
@@ -549,7 +599,10 @@
       tiles.prepend(tile);
     }
     const v = tile.querySelector('video');
-    if (state.localStream && v.srcObject !== state.localStream) v.srcObject = state.localStream;
+    if (state.localStream && v.srcObject !== state.localStream) {
+      v.srcObject = state.localStream;
+      playMedia(v);
+    }
     tile.classList.toggle('lv-camoff', !state.camOn);
   }
 
@@ -558,13 +611,17 @@
     const tiles = root.querySelector('.lv-tiles');
     if (!m.tile) {
       m.tile = document.createElement('div');
-      m.tile.className = 'lv-tile';
+      m.tile.className = 'lv-tile lv-connecting';
       m.tile.innerHTML = `<video autoplay playsinline></video><span class="lv-name"></span>`;
       tiles.appendChild(m.tile);
     }
     m.tile.querySelector('.lv-name').textContent = m.name;
     const v = m.tile.querySelector('video');
-    if (m.stream && v.srcObject !== m.stream) v.srcObject = m.stream;
+    if (m.stream && v.srcObject !== m.stream) {
+      v.srcObject = m.stream;
+      m.tile.classList.remove('lv-connecting');
+      playMedia(v);
+    }
   }
 
   function render() {
@@ -662,6 +719,22 @@
     if (cfg.couchBrokerHost) state.brokerHost = cfg.couchBrokerHost;
     if (cfg.couchName) state.name = cfg.couchName;
   });
+
+  // Console diagnostics: run `__couchDebug()` in the page console any time.
+  window.__couchDebug = function () {
+    const rows = [...state.members.entries()].map(([id, m]) => ({
+      peer: id, name: m.name,
+      data: m.dataConn ? (m.dataConn.open ? 'open' : 'pending') : 'none',
+      call: m.call ? 'yes' : 'no',
+      ice: m.call && m.call.peerConnection ? m.call.peerConnection.iceConnectionState : '-',
+      stream: m.stream ? m.stream.getTracks().map((t) => t.kind).join('+') : 'none',
+    }));
+    console.log('[Couch] me=%s host=%s inParty=%s', state.peerId, state.isHost, state.inParty);
+    console.table(rows);
+    console.log('[Couch] localStream tracks:',
+      state.localStream ? state.localStream.getTracks().map((t) => t.kind + ':' + t.readyState) : 'none');
+    return rows;
+  };
 
   log('content script ready on', location.href);
 })();
