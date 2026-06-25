@@ -1,0 +1,112 @@
+:root {
+  --teal: #0fb5a3;
+  --teal-d: #0a7a6e;
+  --bg: #0b1216;
+  --panel: #121c21;
+  --text: #eafffb;
+  --muted: #93b3ac;
+  --line: rgba(255, 255, 255, 0.08);
+  --maxw: 860px;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: radial-gradient(1100px 500px at 70% -10%, rgba(15, 181, 163, 0.16), transparent), var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--teal); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 22px; }
+
+/* Header */
+.site-header {
+  border-bottom: 1px solid var(--line);
+  background: rgba(8, 14, 17, 0.6);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.site-header .wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 64px;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; color: var(--text); }
+.brand img { width: 30px; height: 30px; border-radius: 8px; }
+.brand span { color: var(--teal); }
+.nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; }
+.nav a { color: var(--muted); }
+.nav a:hover { color: var(--text); text-decoration: none; }
+
+/* Hero */
+.hero { padding: 70px 0 50px; text-align: center; }
+.hero h1 { font-size: 42px; line-height: 1.15; margin: 0 0 14px; }
+.hero h1 .accent { color: var(--teal); }
+.hero p { font-size: 19px; color: var(--muted); max-width: 600px; margin: 0 auto 26px; }
+.badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: 999px;
+  background: rgba(15, 181, 163, 0.12); border: 1px solid rgba(15, 181, 163, 0.3);
+  font-size: 14px; font-weight: 600;
+}
+
+/* Cards / sections */
+section { padding: 44px 0; border-top: 1px solid var(--line); }
+section h2 { font-size: 26px; margin: 0 0 8px; }
+.lead { color: var(--muted); margin: 0 0 26px; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+}
+.card h3 { margin: 0 0 6px; font-size: 17px; }
+.card p { margin: 0; color: var(--muted); font-size: 14px; }
+.card .emoji { font-size: 22px; }
+
+ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 0; }
+ol.steps li { position: relative; padding: 10px 0 10px 44px; border-bottom: 1px solid var(--line); }
+ol.steps li:last-child { border-bottom: none; }
+ol.steps li::before {
+  counter-increment: step; content: counter(step);
+  position: absolute; left: 0; top: 10px;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--teal), var(--teal-d));
+  color: #04221d; font-weight: 800; display: flex; align-items: center; justify-content: center;
+}
+
+.note { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: 10px; padding: 14px 16px; color: var(--muted); font-size: 14.5px; }
+
+/* Legal / doc pages */
+.doc { padding: 40px 0 60px; }
+.doc h1 { font-size: 34px; margin: 0 0 4px; }
+.doc .updated { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+.doc h2 { font-size: 22px; margin: 32px 0 10px; }
+.doc h3 { font-size: 17px; margin: 22px 0 6px; }
+.doc p, .doc li { color: #d8efea; }
+.doc ul { padding-left: 22px; }
+.doc table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14.5px; }
+.doc th, .doc td { text-align: left; padding: 9px 12px; border: 1px solid var(--line); vertical-align: top; }
+.doc th { background: rgba(15, 181, 163, 0.1); }
+
+/* Footer */
+.site-footer { border-top: 1px solid var(--line); padding: 28px 0; color: var(--muted); font-size: 13.5px; }
+.site-footer .wrap { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+.site-footer .nav { margin-left: auto; }
+
+@media (max-width: 680px) {
+  .hero h1 { font-size: 32px; }
+  .grid { grid-template-columns: 1fr; }
+  .nav { gap: 14px; }
+}

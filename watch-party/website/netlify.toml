@@ -1,0 +1,30 @@
+# Netlify configuration for the Couch website (static site, no build step).
+# In Netlify, set the site's "Base directory" to: watch-party/website
+# These settings are then relative to that base directory.
+
+[build]
+  publish = "."
+  command = ""
+
+# Sensible security headers for a static marketing/legal site.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+
+# Pretty URLs: allow /privacy and /terms without the .html extension.
+[[redirects]]
+  from = "/privacy"
+  to = "/privacy.html"
+  status = 200
+[[redirects]]
+  from = "/terms"
+  to = "/terms.html"
+  status = 200
+[[redirects]]
+  from = "/support"
+  to = "/support.html"
+  status = 200
