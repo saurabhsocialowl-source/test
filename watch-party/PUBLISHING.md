@@ -38,13 +38,18 @@ one click — **no Developer mode, no "Load unpacked."** It also works for the
 ## Step 2 — Host the privacy policy
 
 The store requires a **public privacy policy URL** because Couch uses camera/mic.
-Easiest options:
+The `website/` folder is the hosted policy. A Netlify site is already reserved:
 
-- Push this repo to GitHub and use the raw URL of `PRIVACY.md`, **or**
-- Turn on **GitHub Pages** for the repo and link to the rendered page, **or**
-- Paste the contents into any free page host and use that link.
+- **Privacy policy URL:** `https://couch-watchparty.netlify.app/privacy`
+- **Terms URL:** `https://couch-watchparty.netlify.app/terms`
+- **Homepage:** `https://couch-watchparty.netlify.app`
 
-Keep the URL handy for step 4.
+To make these live, deploy `watch-party/website/` to the `couch-watchparty`
+Netlify site (Netlify dashboard → couch-watchparty → **Deploys** → drag-and-drop
+the folder, or link the GitHub repo with base dir `watch-party/website`). See
+`website/README.md` for details.
+
+Keep the privacy URL handy for step 4.
 
 ## Step 3 — Create the listing & upload
 

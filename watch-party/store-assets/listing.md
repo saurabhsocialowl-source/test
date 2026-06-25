@@ -15,6 +15,12 @@ Watch Netflix in sync with friends, with a built-in group video & audio call. Ev
 ## Category
 Entertainment _(alternative: Social & Communication)_
 
+## Privacy policy URL
+```
+https://couch-watchparty.netlify.app/privacy
+```
+_(Goes live once the `watch-party/website/` folder is deployed to the `couch-watchparty` Netlify site.)_
+
 ## Description
 ```
 Couch turns Netflix into a shared living room. Start a party, send your friends
