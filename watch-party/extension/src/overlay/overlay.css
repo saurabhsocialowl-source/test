@@ -90,8 +90,10 @@ html.couch-pinned { background: #000 !important; }
 #couch-overlay .lv-logo { font-weight: 700; letter-spacing: 0.3px; color: #0fb5a3; }
 #couch-overlay .lv-room { font-variant: tabular-nums; opacity: 0.8; font-weight: 600; }
 
+#couch-overlay .lv-chattoggle,
 #couch-overlay .lv-pin,
 #couch-overlay .lv-collapse {
+  position: relative;
   background: transparent;
   border: none;
   color: #eafffb;
@@ -102,11 +104,93 @@ html.couch-pinned { background: #000 !important; }
   border-radius: 6px;
   opacity: 0.75;
 }
-#couch-overlay .lv-pin { margin-left: auto; }
+#couch-overlay .lv-chattoggle { margin-left: auto; }
 #couch-overlay .lv-collapse { font-size: 16px; }
+#couch-overlay .lv-chattoggle:hover,
 #couch-overlay .lv-pin:hover,
 #couch-overlay .lv-collapse:hover { opacity: 1; background: rgba(255, 255, 255, 0.1); }
 #couch-overlay .lv-pin.lv-active { opacity: 1; background: rgba(15, 181, 163, 0.35); }
+
+/* Unread-message badge on the chat toggle */
+#couch-overlay .lv-unread {
+  display: none;
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #e05656;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+#couch-overlay .lv-unread.lv-show { display: block; }
+
+/* Chat panel */
+#couch-overlay .lv-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+#couch-overlay.lv-chathidden .lv-chat { display: none; }
+#couch-overlay.lv-chathidden .lv-tiles { flex: 1 1 auto; }
+
+#couch-overlay .lv-chatlog {
+  flex: 1 1 auto;
+  min-height: 60px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+#couch-overlay .lv-msg {
+  font-size: 12.5px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+#couch-overlay .lv-msg-from {
+  color: #5fded0;
+  font-weight: 700;
+  margin-right: 6px;
+}
+#couch-overlay .lv-msg-self .lv-msg-from { color: #9fb0ff; }
+#couch-overlay .lv-msg-text { color: #eafffb; }
+
+#couch-overlay .lv-chatform {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+#couch-overlay .lv-chatinput {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 10px;
+  background: #0c1417;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #eafffb;
+  font-size: 12.5px;
+}
+#couch-overlay .lv-chatinput:focus { outline: none; border-color: #0fb5a3; }
+#couch-overlay .lv-chatsend {
+  flex: 0 0 auto;
+  width: 36px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #0fb5a3, #0a7a6e);
+  color: #04221d;
+  font-size: 14px;
+  cursor: pointer;
+}
+#couch-overlay .lv-chatsend:hover { filter: brightness(1.1); }
 
 #couch-overlay .lv-tiles {
   display: grid;
@@ -114,8 +198,8 @@ html.couch-pinned { background: #000 !important; }
   grid-auto-rows: min-content;
   gap: 6px;
   padding: 8px;
-  flex: 1 1 auto;          /* grow/shrink with the panel size */
-  min-height: 90px;
+  flex: 0 0 auto;          /* natural height; chat takes the remaining space */
+  max-height: 55%;
   overflow-y: auto;
 }
 
@@ -204,6 +288,7 @@ html.couch-pinned { background: #000 !important; }
   resize: none;
 }
 #couch-overlay.lv-collapsed .lv-tiles,
+#couch-overlay.lv-collapsed .lv-chat,
 #couch-overlay.lv-collapsed .lv-controls,
 #couch-overlay.lv-collapsed .lv-status,
 #couch-overlay.lv-collapsed .lv-resizer { display: none; }

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Couch — Watch Party",
-  "version": "0.1.4",
-  "description": "Host synchronized Netflix watch parties with a built-in group video & audio call. Everyone shares playback controls.",
+  "version": "0.2.0",
+  "description": "Synchronized Netflix watch parties with group chat, voice & video call. Everyone shares the playback controls.",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",

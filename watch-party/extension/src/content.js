@@ -286,6 +286,10 @@
       case 'sync-request':
         sendToPage({ type: 'request-state' });
         break;
+      case 'chat':
+        addChatMessage(state.members.get(fromId)?.name || msg.name || 'Guest',
+                       msg.text, /*self*/ false);
+        break;
     }
   }
 
@@ -465,10 +469,18 @@
       <div class="lv-header">
         <span class="lv-logo">Couch</span>
         <span class="lv-room"></span>
+        <button class="lv-chattoggle" title="Show / hide chat">💬<span class="lv-unread"></span></button>
         <button class="lv-pin" title="Pin to side">📌</button>
         <button class="lv-collapse" title="Collapse">–</button>
       </div>
       <div class="lv-tiles"></div>
+      <div class="lv-chat">
+        <div class="lv-chatlog"></div>
+        <form class="lv-chatform">
+          <input class="lv-chatinput" type="text" placeholder="Type a message…" maxlength="500" autocomplete="off" />
+          <button class="lv-chatsend" type="submit" title="Send">➤</button>
+        </form>
+      </div>
       <div class="lv-controls">
         <button class="lv-btn lv-mic"   title="Mute / unmute">🎤</button>
         <button class="lv-btn lv-cam"   title="Camera on / off">📷</button>
@@ -482,6 +494,7 @@
     document.documentElement.appendChild(root);
 
     root.querySelector('.lv-collapse').onclick = () => root.classList.toggle('lv-collapsed');
+    root.querySelector('.lv-chattoggle').onclick = () => toggleChat(root);
     root.querySelector('.lv-pin').onclick = () => cyclePin(root);
     root.querySelector('.lv-mic').onclick = toggleMic;
     root.querySelector('.lv-cam').onclick = toggleCam;
@@ -490,6 +503,7 @@
       navigator.clipboard.writeText(state.room).then(() => toast('Invite code copied'));
     };
     root.querySelector('.lv-leave').onclick = leaveParty;
+    setupChat(root);
 
     makeDraggable(root, root.querySelector('.lv-header'));
     makeEdgeResizer(root, root.querySelector('.lv-resizer'));    // docked: width
@@ -645,6 +659,70 @@
     t.classList.add('lv-show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('lv-show'), 2500);
+  }
+
+  // -------------------------------------------------------------- chat --------
+
+  let unread = 0;
+
+  function setupChat(root) {
+    const form = root.querySelector('.lv-chatform');
+    const input = root.querySelector('.lv-chatinput');
+    form.addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });
+    // Keep keystrokes (space, f, etc.) from triggering Netflix shortcuts.
+    ['keydown', 'keyup', 'keypress'].forEach((ev) =>
+      input.addEventListener(ev, (e) => e.stopPropagation()));
+    input.addEventListener('focus', () => clearUnread());
+  }
+
+  function sendChat() {
+    const input = ui && ui.querySelector('.lv-chatinput');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    if (state.inParty) broadcast({ t: 'chat', text, name: state.name });
+    addChatMessage(state.name, text, /*self*/ true);
+  }
+
+  function addChatMessage(name, text, self) {
+    if (!text) return;
+    const root = buildOverlay();
+    const logEl = root.querySelector('.lv-chatlog');
+    const row = document.createElement('div');
+    row.className = 'lv-msg' + (self ? ' lv-msg-self' : '');
+    const who = document.createElement('span');
+    who.className = 'lv-msg-from';
+    who.textContent = self ? 'You' : name;
+    const body = document.createElement('span');
+    body.className = 'lv-msg-text';
+    body.textContent = text;                 // textContent => safe, no HTML injection
+    row.appendChild(who);
+    row.appendChild(body);
+    logEl.appendChild(row);
+    logEl.scrollTop = logEl.scrollHeight;
+    if (!self && root.classList.contains('lv-chathidden')) {
+      unread++; updateUnread(root);
+    }
+  }
+
+  function toggleChat(root) {
+    root.classList.toggle('lv-chathidden');
+    if (!root.classList.contains('lv-chathidden')) {
+      clearUnread();
+      const input = root.querySelector('.lv-chatinput');
+      if (input) input.focus();
+      const logEl = root.querySelector('.lv-chatlog');
+      if (logEl) logEl.scrollTop = logEl.scrollHeight;
+    }
+  }
+
+  function clearUnread() { unread = 0; if (ui) updateUnread(ui); }
+  function updateUnread(root) {
+    const badge = root.querySelector('.lv-unread');
+    if (!badge) return;
+    badge.textContent = unread > 0 ? (unread > 9 ? '9+' : String(unread)) : '';
+    badge.classList.toggle('lv-show', unread > 0);
   }
 
   // ------------------------------------------------------------ controls ------
