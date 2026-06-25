@@ -71,6 +71,8 @@
     localStream: null,
     members: new Map(),       // peerId -> { name, dataConn, call, stream, tile }
     lastAppliedAt: 0,
+    videoId: null,            // Netflix title everyone should be on
+    titlePollTimer: null,
   };
 
   // ------------------------------------------------------------------ utils ---
@@ -86,6 +88,37 @@
 
   function hostIdFor(room) { return 'couch-' + room.toUpperCase(); }
 
+  // The Netflix title currently open, parsed from the URL (/watch/<id>).
+  function currentVideoId() {
+    const m = location.pathname.match(/\/watch\/(\d+)/);
+    return m ? m[1] : null;
+  }
+  function watchUrl(videoId, room) {
+    let u = 'https://www.netflix.com/watch/' + videoId;
+    if (room) u += '?couch=' + encodeURIComponent(room);
+    return u;
+  }
+  // Shareable invite: opens the host's title AND auto-joins the party.
+  function inviteLink() {
+    if (!state.room) return '';
+    const vid = state.videoId || currentVideoId();
+    return vid ? watchUrl(vid, state.room)
+               : 'https://www.netflix.com/?couch=' + state.room;
+  }
+
+  // Remember the active party so we can auto-rejoin after a page navigation
+  // (e.g. when a viewer is sent to the host's title).
+  function persistActive() {
+    try {
+      chrome.storage.local.set({
+        couchActive: state.inParty ? {
+          room: state.room, name: state.name, isHost: state.isHost,
+          brokerHost: state.brokerHost, ts: Date.now(),
+        } : null,
+      });
+    } catch (e) {}
+  }
+
   function memberStatus() {
     return [state.name, ...[...state.members.values()].map((m) => m.name)];
   }
@@ -94,6 +127,7 @@
     const status = {
       inParty: state.inParty, connected: state.connected, room: state.room,
       name: state.name, micOn: state.micOn, camOn: state.camOn, members: memberStatus(),
+      link: inviteLink(), videoId: state.videoId, watch: onWatchPage(),
     };
     try {
       chrome.storage.local.set({ couchStatus: status });
@@ -172,9 +206,21 @@
     peer.on('error', (err) => {
       log('peer error', err && err.type, err && err.message);
       if (err && err.type === 'unavailable-id') {
-        toast('That code is taken — try creating again');
+        // Host id still held by our previous (now-dead) tab after a refresh.
+        // Wait for the broker to free it, then re-register.
+        if (state.isHost && state.inParty && (state._idRetries = (state._idRetries || 0) + 1) <= 6) {
+          setTimeout(() => { try { if (state.peer) state.peer.destroy(); } catch (e) {} initPeer(); }, 1800);
+        } else {
+          toast('That code is taken — try creating again');
+        }
       } else if (err && err.type === 'peer-unavailable') {
-        toast('Party not found — check the invite code');
+        // Host not ready yet (e.g. both navigated at once) — retry a few times.
+        if (!state.isHost && state.inParty && !hostDataOpen() &&
+            (state._hostRetries = (state._hostRetries || 0) + 1) <= 8) {
+          setTimeout(() => { if (!hostDataOpen()) connectData(state.hostId); }, 1800);
+        } else {
+          toast('Party not found — check the invite code');
+        }
       } else if (err && err.type === 'network') {
         toast('Signaling network hiccup — retrying…');
       }
@@ -197,6 +243,11 @@
 
   // Lower peer id initiates, so exactly one side opens each connection.
   function iInitiateTo(peerId) { return state.peerId < peerId; }
+
+  function hostDataOpen() {
+    const m = state.members.get(state.hostId);
+    return !!(m && m.dataConn && m.dataConn.open);
+  }
 
   function connectData(peerId) {
     if (peerId === state.peerId) return;
@@ -243,6 +294,8 @@
           .map(([id, mm]) => ({ peerId: id, name: mm.name }));
         conn.send({ t: 'welcome', members: others });
         broadcastExcept(peerId, { t: 'peer-joined', peerId, name: m.name });
+        // Put the newcomer on the same title we're watching.
+        if (state.videoId) conn.send({ t: 'title', videoId: state.videoId });
       }
       render(); saveStatus();
     });
@@ -289,6 +342,9 @@
       case 'chat':
         addChatMessage(state.members.get(fromId)?.name || msg.name || 'Guest',
                        msg.text, /*self*/ false);
+        break;
+      case 'title':
+        followTitle(msg.videoId);
         break;
     }
   }
@@ -350,6 +406,45 @@
       cmd: { action: msg.action === 'sync' ? (msg.paused ? 'pause' : 'play') : msg.action,
              timeMs: msg.timeMs },
     });
+  }
+
+  // ---------------------------------------------------------- same title ------
+
+  // The host announces which title to watch; everyone else follows by opening
+  // it (the party auto-reconnects after the navigation via couchActive).
+  function broadcastTitle() {
+    if (state.videoId) broadcast({ t: 'title', videoId: state.videoId });
+  }
+
+  function followTitle(videoId) {
+    if (!videoId || state.isHost) return;            // host is the source of truth
+    if (currentVideoId() === videoId) return;        // already on it
+    toast('Opening the host’s title…');
+    persistActive();
+    location.href = watchUrl(videoId, state.room);
+  }
+
+  // Track the title from the URL. The host broadcasts when it changes so late
+  // joiners and title switches keep everyone on the same show.
+  function startTitlePoll() {
+    stopTitlePoll();
+    let ticks = 0;
+    const tick = () => {
+      const vid = currentVideoId();
+      if (vid && vid !== state.videoId) {
+        state.videoId = vid;
+        if (state.isHost) broadcastTitle();
+        saveStatus();
+      }
+      // Heartbeat the active-party timestamp so a refresh/navigation while the
+      // party is live reconnects, but a visit much later does not.
+      if (++ticks % 8 === 0) persistActive();
+    };
+    tick();
+    state.titlePollTimer = setInterval(tick, 2000);
+  }
+  function stopTitlePoll() {
+    if (state.titlePollTimer) { clearInterval(state.titlePollTimer); state.titlePollTimer = null; }
   }
 
   // ------------------------------------------------------------ local media ---
@@ -500,7 +595,10 @@
     root.querySelector('.lv-cam').onclick = toggleCam;
     root.querySelector('.lv-sync').onclick = forceResync;
     root.querySelector('.lv-copy').onclick = () => {
-      navigator.clipboard.writeText(state.room).then(() => toast('Invite code copied'));
+      const link = inviteLink();
+      const text = link || state.room;
+      navigator.clipboard.writeText(text).then(() =>
+        toast(link ? 'Invite link copied — opens this show & joins' : 'Invite code copied'));
     };
     root.querySelector('.lv-leave').onclick = leaveParty;
     setupChat(root);
@@ -742,8 +840,11 @@
     // Host owns the rendezvous id; joiners get a unique random id.
     state.peerId = host ? state.hostId : 'couch-' + randomId(10);
     state.inParty = true;
+    state.videoId = currentVideoId();
     await ensureLocalStream();
     initPeer();
+    startTitlePoll();
+    persistActive();
     render(); saveStatus();
     return { room: state.room };
   }
@@ -754,11 +855,14 @@
     [...state.members.keys()].forEach((id) => dropMember(id, false));
     try { if (state.peer) state.peer.destroy(); } catch (e) {}
     state.peer = null; state.connected = false;
+    stopTitlePoll();
+    state.videoId = null;
     if (state.localStream) state.localStream.getTracks().forEach((t) => t.stop());
     state.localStream = null;
     applyPagePush();                 // reset any docked page transform first
     if (ui) { ui.remove(); ui = null; }
     state.room = null; state.hostId = null;
+    try { chrome.storage.local.set({ couchActive: null }); } catch (e) {}
     saveStatus();
   }
 
@@ -772,6 +876,7 @@
             present: true, watch: onWatchPage(),
             inParty: state.inParty, connected: state.connected, room: state.room,
             name: state.name, micOn: state.micOn, camOn: state.camOn, members: memberStatus(),
+            link: inviteLink(), videoId: state.videoId,
           });
           break;
         case 'create-party':
@@ -793,9 +898,28 @@
 
   // ----------------------------------------------------------- bootstrap ------
 
-  chrome.storage.local.get(['couchBrokerHost', 'couchName'], (cfg) => {
+  chrome.storage.local.get(['couchBrokerHost', 'couchName', 'couchActive'], (cfg) => {
     if (cfg.couchBrokerHost) state.brokerHost = cfg.couchBrokerHost;
     if (cfg.couchName) state.name = cfg.couchName;
+    if (state.inParty) return;
+
+    const linkRoom = new URLSearchParams(location.search).get('couch');
+    const active = cfg.couchActive;
+    const RECONNECT_TTL = 10 * 60 * 1000; // 10 min — covers navigations, not stale tabs
+
+    if (active && active.room && active.ts && (Date.now() - active.ts) < RECONNECT_TTL) {
+      // Auto-reconnect after a navigation (host's title-follow, refresh, etc.).
+      log('auto-reconnect to party', active.room, active.isHost ? '(host)' : '(guest)');
+      startParty({ room: active.room, name: active.name || state.name,
+        brokerHost: active.brokerHost || state.brokerHost, host: active.isHost });
+    } else if (linkRoom) {
+      // Opened via an invite link → join that party as a guest.
+      log('auto-join from invite link', linkRoom);
+      startParty({ room: linkRoom, name: state.name, brokerHost: state.brokerHost, host: false });
+    } else if (active && active.room) {
+      // Stale active party → forget it.
+      try { chrome.storage.local.set({ couchActive: null }); } catch (e) {}
+    }
   });
 
   // Console diagnostics: run `__couchDebug()` in the page console any time.

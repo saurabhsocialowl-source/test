@@ -31,11 +31,20 @@ function sendToContent(msg) {
   });
 }
 
+let currentLink = '';
 function renderParty(status) {
   $('#room-code').textContent = status.room || '——';
   const conn = $('#conn');
   conn.textContent = status.connected ? 'Connected — in sync 🟢' : 'Connecting…';
   conn.className = 'conn ' + (status.connected ? 'ok' : 'bad');
+
+  // Invite link is only "open the same show" once the host is on a title.
+  currentLink = status.link || '';
+  const onTitle = !!status.videoId;
+  $('#copy-link').textContent = onTitle ? '🔗 Copy invite link' : '🔗 Copy join link';
+  $('#link-hint').textContent = onTitle
+    ? 'Share this link — it opens this exact show and joins the party automatically.'
+    : 'Open a Netflix title to get a link that opens the same show. For now this link just joins the party.';
 
   const ul = $('#members');
   ul.innerHTML = '';
@@ -69,10 +78,10 @@ async function init() {
   if (cfg.couchName) $('#name').value = cfg.couchName;
   if (cfg.couchBrokerHost) $('#broker-host').value = cfg.couchBrokerHost;
 
-  // The content script runs on all netflix.com pages and reports whether the
-  // current page is a watch page. No "tabs" permission / URL reading needed.
+  // The content script runs on every netflix.com page. If it answers, we're on
+  // Netflix and can create/join a party (no need to be playing something yet).
   const status = await sendToContent({ type: 'get-status' });
-  if (!status || !status.watch) {
+  if (!status) {
     show(views.notNetflix);
     return;
   }
@@ -109,7 +118,16 @@ $('#copy').onclick = async () => {
   const code = $('#room-code').textContent;
   await navigator.clipboard.writeText(code);
   $('#copy').textContent = 'Copied!';
-  setTimeout(() => ($('#copy').textContent = 'Copy'), 1200);
+  setTimeout(() => ($('#copy').textContent = 'Copy code'), 1200);
+};
+
+$('#copy-link').onclick = async () => {
+  if (!currentLink) return;
+  await navigator.clipboard.writeText(currentLink);
+  const btn = $('#copy-link');
+  const orig = btn.textContent;
+  btn.textContent = '✓ Link copied!';
+  setTimeout(() => (btn.textContent = orig), 1400);
 };
 
 $('#mic').onclick = async () => { await sendToContent({ type: 'toggle-mic' }); refresh(); };
