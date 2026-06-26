@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Couch — Watch Party",
-  "version": "0.3.0",
-  "description": "Synchronized Netflix watch parties with group chat, voice & video call. Everyone shares the playback controls.",
+  "version": "0.4.0",
+  "description": "Watch parties for Netflix, YouTube, Prime Video, JioHotstar, Disney+ & ZEE5 — synced playback with group chat, voice & video.",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -19,21 +19,43 @@
   },
   "permissions": ["storage"],
   "host_permissions": [
-    "*://*.netflix.com/*"
+    "*://*.netflix.com/*",
+    "*://*.youtube.com/*",
+    "*://*.primevideo.com/*",
+    "*://*.hotstar.com/*",
+    "*://*.jiohotstar.com/*",
+    "*://*.disneyplus.com/*",
+    "*://*.zee5.com/*"
   ],
   "background": {
     "service_worker": "src/background.js"
   },
   "content_scripts": [
     {
-      "matches": ["*://*.netflix.com/*"],
+      "matches": [
+        "*://*.netflix.com/*",
+        "*://*.youtube.com/*",
+        "*://*.primevideo.com/*",
+        "*://*.hotstar.com/*",
+        "*://*.jiohotstar.com/*",
+        "*://*.disneyplus.com/*",
+        "*://*.zee5.com/*"
+      ],
       "js": ["src/injected.js"],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
     },
     {
-      "matches": ["*://*.netflix.com/*"],
+      "matches": [
+        "*://*.netflix.com/*",
+        "*://*.youtube.com/*",
+        "*://*.primevideo.com/*",
+        "*://*.hotstar.com/*",
+        "*://*.jiohotstar.com/*",
+        "*://*.disneyplus.com/*",
+        "*://*.zee5.com/*"
+      ],
       "js": ["src/vendor/peerjs.min.js", "src/content.js"],
       "css": ["src/overlay/overlay.css"],
       "run_at": "document_idle",

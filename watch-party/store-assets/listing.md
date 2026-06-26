@@ -9,7 +9,7 @@ Couch — Watch Party
 
 ## Summary (max 132 characters)
 ```
-Watch Netflix in sync with friends, with a built-in group video & audio call. Everyone shares the controls.
+Watch in sync on Netflix, YouTube, Prime, JioHotstar, Disney+ & ZEE5, with group chat, voice & video.
 ```
 
 ## Category
@@ -65,9 +65,9 @@ on their own device. No data is sent to the developer.
 
 ## Permission justification — host access (netflix.com)
 ```
-Couch runs only on Netflix watch pages, where it shows the watch-party call
-overlay and synchronizes the Netflix player among participants. The extension is
-inactive on all other websites.
+Couch runs only on the supported streaming sites (Netflix, YouTube, Prime Video,
+JioHotstar, Disney+, ZEE5), where it shows the watch-party overlay and synchronizes
+playback among participants. The extension is inactive on all other websites.
 ```
 
 ## Remote code

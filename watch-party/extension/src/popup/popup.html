@@ -15,10 +15,18 @@
     </div>
   </header>
 
-  <!-- Shown when NOT on a Netflix /watch page -->
+  <!-- Shown when NOT on a supported streaming site -->
   <section id="not-netflix" class="card hidden">
-    <p>Open a title on <strong>Netflix</strong> and press play, then come back here to start a party.</p>
-    <button id="open-netflix" class="btn ghost">Open Netflix</button>
+    <p>Open a supported streaming site, then come back here to start a party.</p>
+    <p class="muted">Works on Netflix, YouTube, Prime Video, JioHotstar, Disney+ and ZEE5.</p>
+    <div class="row">
+      <button class="btn ghost open-site" data-url="https://www.netflix.com">Netflix</button>
+      <button class="btn ghost open-site" data-url="https://www.youtube.com">YouTube</button>
+    </div>
+    <div class="row">
+      <button class="btn ghost open-site" data-url="https://www.primevideo.com">Prime</button>
+      <button class="btn ghost open-site" data-url="https://www.hotstar.com">JioHotstar</button>
+    </div>
   </section>
 
   <!-- Lobby: create or join -->
@@ -75,7 +83,7 @@
     <button id="leave" class="btn danger">Leave party</button>
   </section>
 
-  <footer class="ft">Each person needs their own Netflix on the same title. Couch keeps you in sync.</footer>
+  <footer class="ft">Each person needs their own account on the same title. Couch keeps you in sync.</footer>
 
   <script src="popup.js"></script>
 </body>

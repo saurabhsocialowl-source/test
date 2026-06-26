@@ -35,7 +35,9 @@ let currentLink = '';
 function renderParty(status) {
   $('#room-code').textContent = status.room || '——';
   const conn = $('#conn');
-  conn.textContent = status.connected ? 'Connected — in sync 🟢' : 'Connecting…';
+  conn.textContent = status.connected
+    ? 'Connected - in sync' + (status.platform && status.platform !== 'this site' ? ' · ' + status.platform : '') + ' 🟢'
+    : 'Connecting…';
   conn.className = 'conn ' + (status.connected ? 'ok' : 'bad');
 
   // Invite link is only "open the same show" once the host is on a title.
@@ -98,7 +100,9 @@ function readConfig() {
 
 // ---- Event wiring ----------------------------------------------------------
 
-$('#open-netflix').onclick = () => chrome.tabs.create({ url: 'https://www.netflix.com' });
+document.querySelectorAll('.open-site').forEach((b) => {
+  b.onclick = () => chrome.tabs.create({ url: b.dataset.url });
+});
 
 $('#create').onclick = async () => {
   const { name, brokerHost } = readConfig();

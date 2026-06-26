@@ -88,14 +88,60 @@
 
   function hostIdFor(room) { return 'couch-' + room.toUpperCase(); }
 
-  // The Netflix title currently open, parsed from the URL (/watch/<id>).
-  function currentVideoId() {
-    const m = location.pathname.match(/\/watch\/(\d+)/);
-    return m ? m[1] : null;
+  // ---- Streaming-platform adapters -------------------------------------------
+  // Sync/call/chat are platform-agnostic (HTML5 <video> + WebRTC). Each adapter
+  // only defines how to (a) tell we're on a playback page, (b) derive a stable
+  // "same title" key from the URL, and (c) rebuild a shareable watch URL.
+  const PLATFORMS = [
+    { id: 'netflix', label: 'Netflix', host: /(^|\.)netflix\.com$/,
+      isWatch: () => /\/watch\//.test(location.pathname),
+      key: () => (location.pathname.match(/\/watch\/(\d+)/) || [])[1] || null,
+      url: (k) => 'https://www.netflix.com/watch/' + k },
+
+    { id: 'youtube', label: 'YouTube', host: /(^|\.)youtube\.com$/,
+      isWatch: () => location.pathname === '/watch' && new URLSearchParams(location.search).has('v'),
+      key: () => new URLSearchParams(location.search).get('v'),
+      url: (k) => 'https://www.youtube.com/watch?v=' + k },
+
+    { id: 'prime', label: 'Prime Video', host: /(^|\.)primevideo\.com$/,
+      isWatch: () => /\/(detail|watch)\//.test(location.pathname) || !!document.querySelector('video'),
+      key: () => (location.pathname.match(/\/(?:detail|watch)\/([^/?#]+)/) || [])[1] || location.pathname,
+      url: (k) => (String(k).startsWith('/') ? location.origin + k : 'https://www.primevideo.com/detail/' + k) },
+
+    { id: 'hotstar', label: 'JioHotstar', host: /(^|\.)hotstar\.com$|(^|\.)jiohotstar\.com$/,
+      isWatch: () => /\/(watch|movies|shows|tv|sports)\//.test(location.pathname),
+      key: () => location.pathname,
+      url: (k) => location.origin + k },
+
+    { id: 'disneyplus', label: 'Disney+', host: /(^|\.)disneyplus\.com$/,
+      isWatch: () => /\/(video|play|movies|series)\//.test(location.pathname),
+      key: () => location.pathname,
+      url: (k) => location.origin + k },
+
+    { id: 'zee5', label: 'ZEE5', host: /(^|\.)zee5\.com$/,
+      isWatch: () => /\/(movies|tvshows|web-series|watch|videos)\//.test(location.pathname),
+      key: () => location.pathname,
+      url: (k) => location.origin + k },
+  ];
+  // Fallback: any site with a <video>, keyed by its path — sync still works.
+  const GENERIC = { id: 'web', label: 'this site',
+    isWatch: () => !!document.querySelector('video'),
+    key: () => location.pathname + location.search,
+    url: (k) => (String(k).startsWith('/') ? location.origin + k : k) };
+
+  function platform() {
+    return PLATFORMS.find((p) => p.host.test(location.hostname)) || GENERIC;
   }
-  function watchUrl(videoId, room) {
-    let u = 'https://www.netflix.com/watch/' + videoId;
-    if (room) u += '?couch=' + encodeURIComponent(room);
+  function onWatchPage() { try { return !!platform().isWatch(); } catch (e) { return false; } }
+
+  // Stable identity of the current title (used to detect "same show").
+  function currentVideoId() { try { return platform().key() || null; } catch (e) { return null; } }
+
+  // Build a watch URL for a title key, optionally with the auto-join param.
+  function watchUrl(key, room) {
+    let u;
+    try { u = platform().url(key); } catch (e) { u = location.href; }
+    if (room) u += (u.indexOf('?') === -1 ? '?' : '&') + 'couch=' + encodeURIComponent(room);
     return u;
   }
   // Shareable invite: opens the host's title AND auto-joins the party.
@@ -103,7 +149,7 @@
     if (!state.room) return '';
     const vid = state.videoId || currentVideoId();
     return vid ? watchUrl(vid, state.room)
-               : 'https://www.netflix.com/?couch=' + state.room;
+               : location.origin + '/?couch=' + state.room;
   }
 
   // Remember the active party so we can auto-rejoin after a page navigation
@@ -128,6 +174,7 @@
       inParty: state.inParty, connected: state.connected, room: state.room,
       name: state.name, micOn: state.micOn, camOn: state.camOn, members: memberStatus(),
       link: inviteLink(), videoId: state.videoId, watch: onWatchPage(),
+      platform: platform().label,
     };
     try {
       chrome.storage.local.set({ couchStatus: status });
@@ -137,11 +184,7 @@
 
   // --------------------------------------------------------- page bridge ------
   // injected.js runs as a `world: "MAIN"` content script (see manifest), so no
-  // manual <script> injection is needed — and it isn't blocked by Netflix's CSP.
-
-  function onWatchPage() {
-    return location.pathname.indexOf('/watch') === 0;
-  }
+  // manual <script> injection is needed — and it isn't blocked by site CSP.
 
   function sendToPage(msg) {
     window.postMessage(Object.assign({ source: 'couch-content' }, msg), '*');
@@ -876,7 +919,7 @@
             present: true, watch: onWatchPage(),
             inParty: state.inParty, connected: state.connected, room: state.room,
             name: state.name, micOn: state.micOn, camOn: state.camOn, members: memberStatus(),
-            link: inviteLink(), videoId: state.videoId,
+            link: inviteLink(), videoId: state.videoId, platform: platform().label,
           });
           break;
         case 'create-party':
