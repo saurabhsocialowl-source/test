@@ -1,4 +1,4 @@
-/* Couch popup — thin control panel that drives the content script. */
+/* Couch popup - thin control panel that drives the content script. */
 
 const $ = (sel) => document.querySelector(sel);
 const views = {
@@ -24,7 +24,7 @@ function sendToContent(msg) {
   return new Promise((resolve) => {
     if (!activeTab) return resolve(null);
     chrome.tabs.sendMessage(activeTab.id, msg, (resp) => {
-      // Ignore "no receiver" errors — surfaced as null.
+      // Ignore "no receiver" errors - surfaced as null.
       void chrome.runtime.lastError;
       resolve(resp || null);
     });
@@ -33,7 +33,7 @@ function sendToContent(msg) {
 
 let currentLink = '';
 function renderParty(status) {
-  $('#room-code').textContent = status.room || '——';
+  $('#room-code').textContent = status.room || '--';
   const conn = $('#conn');
   conn.textContent = status.connected
     ? 'Connected - in sync' + (status.platform && status.platform !== 'this site' ? ' · ' + status.platform : '') + ' 🟢'
@@ -45,7 +45,7 @@ function renderParty(status) {
   const onTitle = !!status.videoId;
   $('#copy-link').textContent = onTitle ? '🔗 Copy invite link' : '🔗 Copy join link';
   $('#link-hint').textContent = onTitle
-    ? 'Share this link — it opens this exact show and joins the party automatically.'
+    ? 'Share this link - it opens this exact show and joins the party automatically.'
     : 'Open a Netflix title to get a link that opens the same show. For now this link just joins the party.';
 
   const ul = $('#members');

@@ -1,33 +1,33 @@
-# Couch — Netflix Watch Party (Browser Extension)
+# Couch - Netflix Watch Party (Browser Extension)
 
 Host **synchronized Netflix watch parties** with a built-in **group video & audio call**.
-Everyone shares the playback controls — when anyone plays, pauses, or seeks, everyone's
+Everyone shares the playback controls - when anyone plays, pauses, or seeks, everyone's
 player follows along, and you see and hear each other in a floating call overlay on top
 of Netflix.
 
 > **Same title, own account:** Netflix video is DRM-protected and cannot be streamed from
 > one person to the group. Like Teleparty / Netflix Party, **every participant needs their
 > own Netflix account and must open the same title.** Couch synchronizes everyone's
-> *playback position* and adds the call layer — it never touches the video itself.
+> *playback position* and adds the call layer - it never touches the video itself.
 
 ---
 
-## No server to run — it's fully peer-to-peer
+## No server to run - it's fully peer-to-peer
 
 There is **nothing to host and no URL to manage.**
 
 - **Calls and playback-sync travel directly browser-to-browser** over WebRTC (a full
-  mesh) — the lowest-latency path there is, the same tech Discord and Meet use.
+  mesh) - the lowest-latency path there is, the same tech Discord and Meet use.
 - A tiny bit of "matchmaking" (introducing peers to each other) runs over the **free
   PeerJS public cloud broker**, which is built into the extension. The broker is only
   touched during the few-message handshake when someone joins; after that it is
   completely out of the path, so it never affects sync speed.
-- The **invite code is the rendezvous address** — the party creator registers the peer
+- The **invite code is the rendezvous address** - the party creator registers the peer
   id `couch-<CODE>`, and joiners reach it with just the code.
 
 > Why not Netlify / serverless functions? A signaling broker needs an always-on
 > WebSocket connection, which Netlify Functions (short-lived, stateless) can't provide.
-> The PeerJS cloud sidesteps the question entirely — but if you ever want your *own*
+> The PeerJS cloud sidesteps the question entirely - but if you ever want your *own*
 > private broker, host it on a platform that supports persistent WebSockets (Render,
 > Railway, Fly.io) and put its address in the popup's **Advanced** field.
 
@@ -74,10 +74,10 @@ watch-party/
 
 ## Install & use
 
-### Option A — From the Chrome Web Store (no Developer mode)
+### Option A - From the Chrome Web Store (no Developer mode)
 
 To let anyone install with one click (no `chrome://extensions`, no Developer
-mode), publish it to the store. Everything is prepared — the upload package, promo
+mode), publish it to the store. Everything is prepared - the upload package, promo
 images, privacy policy, and listing copy. See **[PUBLISHING.md](PUBLISHING.md)**
 for the full step-by-step. Build/refresh the upload zip anytime with:
 
@@ -85,7 +85,7 @@ for the full step-by-step. Build/refresh the upload zip anytime with:
 ./build.sh        # -> store-assets/couch-<version>.zip  (manifest at the root)
 ```
 
-### Option B — Load it yourself for testing (Developer mode)
+### Option B - Load it yourself for testing (Developer mode)
 
 1. Go to `chrome://extensions` (or `edge://extensions`).
 2. Enable **Developer mode** (top-right).
@@ -100,7 +100,7 @@ for the full step-by-step. Build/refresh the upload zip anytime with:
 4. **Copy the invite code** and send it to your friends.
 5. Each friend opens the **same title**, clicks the icon, pastes the code, **Join party**.
 
-That's it — no installs on a server, no accounts. Anyone's play / pause / seek syncs to
+That's it - no installs on a server, no accounts. Anyone's play / pause / seek syncs to
 everyone, and the call overlay shows each participant. Use the overlay (or popup) to
 mute, toggle camera, hit **⟳ resync** to pull everyone to your exact position, or leave.
 
@@ -120,9 +120,9 @@ mute, toggle camera, hit **⟳ resync** to pull everyone to your exact position,
 
 ## Limitations & notes
 
-- **Same title required per person** — DRM means we sync state, not pixels.
+- **Same title required per person** - DRM means we sync state, not pixels.
 - **Mesh calls** are comfortable for ~4–6 people (each person uploads video to every
-  other). For bigger parties you'd add an SFU media server — a future enhancement.
+  other). For bigger parties you'd add an SFU media server - a future enhancement.
 - **NAT traversal** uses public Google STUN. Some strict networks need a **TURN** server
   for the *call* to connect (sync still works); add its
   `{ urls, username, credential }` to `ICE_SERVERS` in `content.js`.

@@ -1,5 +1,5 @@
 /*
- * Couch — background service worker.
+ * Couch - background service worker.
  *
  * Long-lived party state lives in the content script (the Netflix tab stays
  * open). Signaling uses the PeerJS public cloud by default, so there is no

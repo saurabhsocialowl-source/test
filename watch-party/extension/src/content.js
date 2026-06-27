@@ -1,5 +1,5 @@
 /*
- * Couch — content script (isolated world) running on netflix.com/watch/*.
+ * Couch - content script (isolated world) running on netflix.com/watch/*.
  *
  * Serverless architecture (no backend to host):
  *   - Signaling runs over the free PeerJS public cloud broker (wss). The party
@@ -123,7 +123,7 @@
       key: () => location.pathname,
       url: (k) => location.origin + k },
   ];
-  // Fallback: any site with a <video>, keyed by its path — sync still works.
+  // Fallback: any site with a <video>, keyed by its path - sync still works.
   const GENERIC = { id: 'web', label: 'this site',
     isWatch: () => !!document.querySelector('video'),
     key: () => location.pathname + location.search,
@@ -184,7 +184,7 @@
 
   // --------------------------------------------------------- page bridge ------
   // injected.js runs as a `world: "MAIN"` content script (see manifest), so no
-  // manual <script> injection is needed — and it isn't blocked by site CSP.
+  // manual <script> injection is needed - and it isn't blocked by site CSP.
 
   function sendToPage(msg) {
     window.postMessage(Object.assign({ source: 'couch-content' }, msg), '*');
@@ -229,7 +229,7 @@
       state.connected = true;
       log('broker open as', id, state.isHost ? '(host)' : '(joiner)');
       if (!state.isHost) connectData(state.hostId); // bootstrap discovery
-      toast(state.isHost ? 'Party ready — share the code' : 'Joined — connecting…');
+      toast(state.isHost ? 'Party ready - share the code' : 'Joined - connecting…');
       render(); saveStatus();
     });
 
@@ -254,18 +254,18 @@
         if (state.isHost && state.inParty && (state._idRetries = (state._idRetries || 0) + 1) <= 6) {
           setTimeout(() => { try { if (state.peer) state.peer.destroy(); } catch (e) {} initPeer(); }, 1800);
         } else {
-          toast('That code is taken — try creating again');
+          toast('That code is taken - try creating again');
         }
       } else if (err && err.type === 'peer-unavailable') {
-        // Host not ready yet (e.g. both navigated at once) — retry a few times.
+        // Host not ready yet (e.g. both navigated at once) - retry a few times.
         if (!state.isHost && state.inParty && !hostDataOpen() &&
             (state._hostRetries = (state._hostRetries || 0) + 1) <= 8) {
           setTimeout(() => { if (!hostDataOpen()) connectData(state.hostId); }, 1800);
         } else {
-          toast('Party not found — check the invite code');
+          toast('Party not found - check the invite code');
         }
       } else if (err && err.type === 'network') {
-        toast('Signaling network hiccup — retrying…');
+        toast('Signaling network hiccup - retrying…');
       }
     });
   }
@@ -501,7 +501,7 @@
       });
     } catch (e) {
       log('getUserMedia failed:', e && e.name, e && e.message);
-      toast('Mic/camera unavailable — joining in listen-only mode');
+      toast('Mic/camera unavailable - joining in listen-only mode');
       state.localStream = new MediaStream();
     }
     applyTrackToggles();
@@ -542,7 +542,7 @@
 
   // When docked, push the Netflix page into the remaining space so the panel
   // never overlaps the video. We scale <body> (our overlay lives on <html>, a
-  // sibling of <body>, so it isn't affected) — robust to any Netflix layout.
+  // sibling of <body>, so it isn't affected) - robust to any Netflix layout.
   function applyPagePush() {
     const b = document.body;
     if (!b) return;
@@ -588,8 +588,8 @@
     if (!btn) return;
     btn.classList.toggle('lv-active', overlayGeo.pin !== 'none');
     btn.title = overlayGeo.pin === 'none' ? 'Pin to right edge'
-      : overlayGeo.pin === 'right' ? 'Pinned right — click to pin left'
-      : 'Pinned left — click to unpin (float)';
+      : overlayGeo.pin === 'right' ? 'Pinned right - click to pin left'
+      : 'Pinned left - click to unpin (float)';
   }
 
   function cyclePin(root) {
@@ -641,7 +641,7 @@
       const link = inviteLink();
       const text = link || state.room;
       navigator.clipboard.writeText(text).then(() =>
-        toast(link ? 'Invite link copied — opens this show & joins' : 'Invite code copied'));
+        toast(link ? 'Invite link copied - opens this show & joins' : 'Invite code copied'));
     };
     root.querySelector('.lv-leave').onclick = leaveParty;
     setupChat(root);
@@ -658,7 +658,7 @@
     return root;
   }
 
-  // Visible bottom-corner grip — resizes the floating panel in both dimensions.
+  // Visible bottom-corner grip - resizes the floating panel in both dimensions.
   function makeCornerResizer(el, grip) {
     let sx = 0, sy = 0, sw = 0, sh = 0, resizing = false;
     grip.addEventListener('mousedown', (e) => {
@@ -948,7 +948,7 @@
 
     const linkRoom = new URLSearchParams(location.search).get('couch');
     const active = cfg.couchActive;
-    const RECONNECT_TTL = 10 * 60 * 1000; // 10 min — covers navigations, not stale tabs
+    const RECONNECT_TTL = 10 * 60 * 1000; // 10 min - covers navigations, not stale tabs
 
     if (active && active.room && active.ts && (Date.now() - active.ts) < RECONNECT_TTL) {
       // Auto-reconnect after a navigation (host's title-follow, refresh, etc.).

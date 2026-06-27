@@ -17,7 +17,7 @@ website/
 
 ## Deploy to Netlify (no build step)
 
-### Option A — connect this Git repo (recommended)
+### Option A - connect this Git repo (recommended)
 1. Sign in at <https://app.netlify.com> → **Add new site → Import an existing project**.
 2. Pick this repository and branch.
 3. Set **Base directory** to `watch-party/website`.
@@ -27,10 +27,10 @@ website/
 6. (Optional) Rename the site under **Site settings → Site name** to get a nicer
    subdomain.
 
-### Option B — drag-and-drop (fastest, no Git)
+### Option B - drag-and-drop (fastest, no Git)
 1. Download/zip the contents of this `website/` folder.
 2. Go to <https://app.netlify.com/drop> and drop the folder in.
-3. Done — you get an instant URL.
+3. Done - you get an instant URL.
 
 ## Use it for the Chrome Web Store
 

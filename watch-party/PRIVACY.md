@@ -1,4 +1,4 @@
-# Couch — Privacy Policy
+# Couch - Privacy Policy
 
 _Last updated: 2026-06-10_
 
@@ -31,15 +31,15 @@ To introduce party members to each other, Couch uses a **signaling broker**. By
 default this is the free **PeerJS public cloud** (`peerjs.com`). The broker only
 relays the small connection-setup messages (temporary peer IDs and WebRTC
 negotiation) needed to establish a direct connection. **It does not carry your
-audio, video, playback data, or any Netflix content** — those flow directly
+audio, video, playback data, or any Netflix content** - those flow directly
 between participants. You may point Couch at your own self-hosted broker in the
 extension's Advanced settings.
 
 ## Permissions
 
-- **`storage`** — to remember your display name and optional broker setting on
+- **`storage`** - to remember your display name and optional broker setting on
   your own device.
-- **Access to `netflix.com`** — so the extension can run on Netflix watch pages,
+- **Access to `netflix.com`** - so the extension can run on Netflix watch pages,
   show the call overlay, and synchronize the player. It is not active on any
   other website.
 

@@ -4,7 +4,7 @@ Paste these into the matching fields in the Developer Dashboard.
 
 ## Name
 ```
-Couch — Watch Party
+Couch - Watch Party
 ```
 
 ## Summary (max 132 characters)
@@ -23,47 +23,51 @@ _(Goes live once the `watch-party/website/` folder is deployed to the `couch-wat
 
 ## Description
 ```
-Couch turns Netflix into a shared living room. Start a party, send your friends
-the invite code, and watch the same title perfectly in sync — when anyone plays,
-pauses, or skips, everyone's player follows along. A built-in video and audio
-call overlay lets you see and hear each other the whole time, right on top of
-Netflix.
+Couch turns your favourite streaming service into a shared living room. Start a
+party, send your friends the invite link, and watch the same title perfectly in
+sync - when anyone plays, pauses, or skips, everyone's player follows along. A
+built-in group chat, voice, and video call lets you see and hear each other the
+whole time, right on top of the video.
+
+Works on Netflix, YouTube, Prime Video, JioHotstar, Disney+ and ZEE5.
 
 WHY YOU'LL LIKE IT
-• Synced playback — shared controls, so anyone can play, pause, or seek for the group
-• Group video & audio call — react together without leaving Netflix
-• One-tap resync — snap everyone back to the same moment after ads or buffering
-• Draggable overlay — move or collapse the call window anytime
-• Private by design — calls and sync run directly between you and your friends (peer-to-peer)
-• Nothing to set up — no server to run, no account to create
+• Synced playback - shared controls, so anyone can play, pause, or seek for the group
+• Group chat, voice, and video - react together without leaving the video
+• One-click invite link - opens the same title and joins the party automatically
+• One-tap resync - snap everyone back to the same moment after ads or buffering
+• Draggable, dockable overlay - move, resize, or pin the call window anytime
+• Private by design - chat, calls, and sync run directly between you and your friends (peer-to-peer)
+• Nothing to set up - no server to run, no account to create
 
 HOW IT WORKS
-1. Open a title on Netflix and press play.
+1. Open a title on a supported site and press play.
 2. Click the Couch icon and create a party.
-3. Share the invite code with your friends.
-4. Each friend opens the same title and joins with the code.
+3. Share the invite link with your friends.
+4. They click it - the same title opens and they join automatically.
 
 GOOD TO KNOW
-Because Netflix video is protected, everyone needs their own Netflix account and
-must open the same title — Couch keeps your playback in sync and adds the call.
-It does not stream, copy, or record any video.
+Because streaming video is protected, everyone needs their own account on the
+same title - Couch keeps your playback in sync and adds the call. It does not
+stream, copy, or record any video.
 
-Couch is not affiliated with Netflix.
+Couch is not affiliated with any of the streaming services it supports. All
+trademarks are the property of their respective owners.
 ```
 
-## Privacy practices — single purpose
+## Privacy practices - single purpose
 ```
-Synchronize Netflix playback among friends and provide a group video/audio call
-while watching together.
+Synchronize streaming playback among friends and provide a group chat, voice, and
+video call while watching together on supported sites.
 ```
 
-## Permission justification — storage
+## Permission justification - storage
 ```
 Remembers the user's display name and optional signaling-broker setting locally
 on their own device. No data is sent to the developer.
 ```
 
-## Permission justification — host access (netflix.com)
+## Permission justification - host access (netflix.com)
 ```
 Couch runs only on the supported streaming sites (Netflix, YouTube, Prime Video,
 JioHotstar, Disney+, ZEE5), where it shows the watch-party overlay and synchronizes

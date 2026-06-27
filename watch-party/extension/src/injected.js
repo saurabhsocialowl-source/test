@@ -1,5 +1,5 @@
 /*
- * Couch — injected page-context script.
+ * Couch - injected page-context script.
  *
  * Runs in Netflix's main world (NOT the isolated content-script world) so it can
  * reach `netflix.appContext` and drive the real player. It talks to content.js
@@ -116,7 +116,7 @@
     send({ type: 'ready' });
   }
 
-  // Netflix mounts/unmounts the <video> across title changes — keep watching.
+  // Netflix mounts/unmounts the <video> across title changes - keep watching.
   const findInterval = setInterval(() => {
     const video = getVideoEl();
     if (video) bindVideo(video);
