@@ -258,11 +258,15 @@
         }
       } else if (err && err.type === 'peer-unavailable') {
         // Host not ready yet (e.g. both navigated at once) - retry a few times.
-        if (!state.isHost && state.inParty && !hostDataOpen() &&
+        if (hostDataOpen()) return;               // already connected; ignore
+        if (!state.isHost && state.inParty &&
             (state._hostRetries = (state._hostRetries || 0) + 1) <= 8) {
           setTimeout(() => { if (!hostDataOpen()) connectData(state.hostId); }, 1800);
         } else {
-          toast('Party not found - check the invite code');
+          // Give up cleanly so the next attempt starts fresh (no stale session).
+          toast('Could not reach the host. Make sure their party is open, then rejoin.');
+          try { chrome.storage.local.set({ couchActive: null }); } catch (e) {}
+          leaveParty();
         }
       } else if (err && err.type === 'network') {
         toast('Signaling network hiccup - retrying…');
@@ -946,18 +950,29 @@
     if (cfg.couchName) state.name = cfg.couchName;
     if (state.inParty) return;
 
-    const linkRoom = new URLSearchParams(location.search).get('couch');
+    // Room from the invite link: accept ?couch=CODE or #couch=CODE (some sites
+    // drop query params on navigation, so the hash is a fallback).
+    const linkRoomRaw = new URLSearchParams(location.search).get('couch') ||
+      (location.hash.match(/couch=([A-Za-z0-9]+)/) || [])[1] || null;
+    const linkRoom = linkRoomRaw ? linkRoomRaw.toUpperCase() : null;
     const active = cfg.couchActive;
-    const RECONNECT_TTL = 10 * 60 * 1000; // 10 min - covers navigations, not stale tabs
+    const fresh = active && active.room && active.ts && (Date.now() - active.ts) < 10 * 60 * 1000;
 
-    if (active && active.room && active.ts && (Date.now() - active.ts) < RECONNECT_TTL) {
+    // An explicit invite link ALWAYS wins over a saved session. This prevents a
+    // recent/stale party (from testing) from hijacking a fresh invite link and
+    // silently reconnecting you to the wrong (or dead) room.
+    if (linkRoom && (!active || String(active.room).toUpperCase() !== linkRoom)) {
+      log('auto-join from invite link', linkRoom);
+      try { chrome.storage.local.set({ couchActive: null }); } catch (e) {}
+      startParty({ room: linkRoom, name: state.name, brokerHost: state.brokerHost, host: false });
+    } else if (fresh) {
       // Auto-reconnect after a navigation (host's title-follow, refresh, etc.).
       log('auto-reconnect to party', active.room, active.isHost ? '(host)' : '(guest)');
       startParty({ room: active.room, name: active.name || state.name,
         brokerHost: active.brokerHost || state.brokerHost, host: active.isHost });
     } else if (linkRoom) {
-      // Opened via an invite link → join that party as a guest.
-      log('auto-join from invite link', linkRoom);
+      // Link matches our saved session (or no session): join it.
+      log('auto-join from invite link (matches session)', linkRoom);
       startParty({ room: linkRoom, name: state.name, brokerHost: state.brokerHost, host: false });
     } else if (active && active.room) {
       // Stale active party → forget it.
