@@ -82,7 +82,20 @@
 
   // ------------------------------------------------------------------ utils ---
 
-  const log = (...a) => console.debug('%c[Couch]', 'color:#0FB5A3', ...a);
+  // Captured diagnostics log (also mirrored to the DevTools console). Every
+  // log() call is recorded so the in-overlay Diagnostics panel can show it and
+  // the user can copy it to us - no console spelunking required.
+  const diagLog = [];
+  function fmtT(t) { const d = new Date(t); return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0'); }
+  function log(...a) {
+    let line = '';
+    try { line = a.map((x) => (x && typeof x === 'object') ? JSON.stringify(x) : String(x)).join(' '); }
+    catch (e) { line = a.join(' '); }
+    diagLog.push({ t: Date.now(), line });
+    if (diagLog.length > 400) diagLog.shift();
+    try { console.debug('%c[Couch]', 'color:#0FB5A3', ...a); } catch (e) {}
+    try { if (typeof refreshDiag === 'function') refreshDiag(); } catch (e) {}
+  }
 
   function randomId(n = 8) {
     const c = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -229,10 +242,12 @@
     const peer = new Peer(state.peerId, peerOptions());
     state.peer = peer;
 
+    log('broker connecting via', state.brokerHost || 'peerjs-cloud', 'as', state.peerId, state.isHost ? '(host)' : '(joiner)');
+
     peer.on('open', (id) => {
       state.peerId = id;
       state.connected = true;
-      log('broker open as', id, state.isHost ? '(host)' : '(joiner)');
+      log('broker OPEN as', id, state.isHost ? '(host)' : '(joiner)');
       if (!state.isHost) connectData(state.hostId); // bootstrap discovery
       toast(state.isHost ? 'Party ready - share the code' : 'Joined - connecting…');
       render(); saveStatus();
@@ -241,6 +256,7 @@
     peer.on('connection', (conn) => setupDataConn(conn, /*incoming*/ true));
 
     peer.on('call', (call) => {
+      log('media-call: incoming from', call.peer, '- answering with', (state.localStream ? state.localStream.getTracks().map((t) => t.kind).join('+') || 'no-tracks' : 'no-stream'));
       ensureMember(call.peer, (call.metadata && call.metadata.name));
       call.answer(state.localStream || new MediaStream());
       setupCall(call);
@@ -344,6 +360,7 @@
     if (m._connecting && Date.now() - m._connecting < 4500) return; // attempt in flight
     m._connecting = Date.now();
     try { if (m.dataConn) m.dataConn.close(); } catch (e) {}       // drop a stale/failed conn
+    log('data-conn -> connecting to', peerId);
     const conn = state.peer.connect(peerId, {
       reliable: true, metadata: { name: state.name },
     });
@@ -369,12 +386,14 @@
     if (m.call) return;                                    // attempt in flight
     if (iInitiateTo(peerId)) {
       m._callStart = Date.now();
+      log('media-call -> calling', peerId, 'with', (state.localStream ? state.localStream.getTracks().map((t) => t.kind).join('+') || 'no-tracks' : 'no-stream'));
       const call = state.peer.call(peerId, state.localStream || new MediaStream(), {
         metadata: { name: state.name },
       });
       setupCall(call);
+    } else {
+      log('media-call: waiting for', peerId, 'to call me');
     }
-    // else: wait for their incoming call (their side initiates)
   }
 
   function setupDataConn(conn, incoming) {
@@ -382,9 +401,11 @@
     const m = ensureMember(peerId, conn.metadata && conn.metadata.name);
     m.dataConn = conn;
 
+    log('data-conn', incoming ? 'incoming from' : 'outgoing to', peerId);
     conn.on('open', () => {
       m._connecting = 0;
       state._hostRetries = 0;
+      log('data-conn OPEN with', peerId);
       conn.send({ t: 'hello', name: state.name });
       ensureMedia(peerId);
 
@@ -403,8 +424,8 @@
 
     conn.on('data', (msg) => handleData(peerId, msg));
 
-    conn.on('close', () => dropMember(peerId, /*announce*/ state.isHost));
-    conn.on('error', () => dropMember(peerId, /*announce*/ state.isHost));
+    conn.on('close', () => { log('data-conn CLOSED with', peerId); dropMember(peerId, /*announce*/ state.isHost); });
+    conn.on('error', (e) => { log('data-conn ERROR with', peerId, e && e.type); dropMember(peerId, /*announce*/ state.isHost); });
   }
 
   function handleData(fromId, msg) {
@@ -558,8 +579,9 @@
         audio: true,
         video: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 24 } },
       });
+      log('getUserMedia OK:', state.localStream.getTracks().map((t) => t.kind).join('+') || 'no-tracks');
     } catch (e) {
-      log('getUserMedia failed:', e && e.name, e && e.message);
+      log('getUserMedia FAILED:', e && e.name, '-', e && e.message, '(joining listen-only)');
       toast('Mic/camera unavailable - joining in listen-only mode');
       state.localStream = new MediaStream();
     }
@@ -666,6 +688,7 @@
       <div class="lv-header">
         <span class="lv-logo">Couch</span>
         <span class="lv-room"></span>
+        <button class="lv-diagtoggle" title="Connection diagnostics">🩺</button>
         <button class="lv-chattoggle" title="Show / hide chat">💬<span class="lv-unread"></span></button>
         <button class="lv-pin" title="Pin to side">📌</button>
         <button class="lv-collapse" title="Collapse">–</button>
@@ -677,6 +700,13 @@
           <input class="lv-chatinput" type="text" placeholder="Type a message…" maxlength="500" autocomplete="off" />
           <button class="lv-chatsend" type="submit" title="Send">➤</button>
         </form>
+      </div>
+      <div class="lv-diag">
+        <div class="lv-diag-bar">
+          <span class="lv-diag-title">Diagnostics</span>
+          <button class="lv-diag-copy" type="button">Copy report</button>
+        </div>
+        <pre class="lv-diag-body"></pre>
       </div>
       <div class="lv-controls">
         <button class="lv-btn lv-mic"   title="Mute / unmute">🎤</button>
@@ -703,6 +733,10 @@
         toast(link ? 'Invite link copied - opens this show & joins' : 'Invite code copied'));
     };
     root.querySelector('.lv-leave').onclick = leaveParty;
+    root.querySelector('.lv-diagtoggle').onclick = () => toggleDiag(root);
+    root.querySelector('.lv-diag-copy').onclick = () => {
+      navigator.clipboard.writeText(diagText()).then(() => toast('Diagnostics copied - paste it to share'));
+    };
     setupChat(root);
 
     makeDraggable(root, root.querySelector('.lv-header'));
@@ -926,6 +960,58 @@
     if (!badge) return;
     badge.textContent = unread > 0 ? (unread > 9 ? '9+' : String(unread)) : '';
     badge.classList.toggle('lv-show', unread > 0);
+  }
+
+  // -------------------------------------------------------- diagnostics -------
+
+  function version() {
+    try { return chrome.runtime.getManifest().version; } catch (e) { return '?'; }
+  }
+
+  // A full human-readable status + event report the user can copy to us.
+  function diagText() {
+    const L = [];
+    const p = state.peer;
+    L.push('=== Couch diagnostics ===');
+    L.push('version : ' + version());
+    L.push('site    : ' + location.hostname + '  (' + platform().label + ', watch=' + onWatchPage() + ')');
+    L.push('role    : ' + (state.isHost ? 'HOST' : 'joiner') + '   inParty=' + state.inParty);
+    L.push('me      : ' + state.peerId);
+    L.push('room    : ' + state.room + '   hostId=' + state.hostId);
+    L.push('broker  : ' + (state.brokerHost || 'peerjs-cloud') + '   connected=' + state.connected +
+           '   peerDestroyed=' + (p ? !!p.destroyed : 'n/a') + '   peerDisconnected=' + (p ? !!p.disconnected : 'n/a'));
+    const ls = state.localStream
+      ? (state.localStream.getTracks().map((t) => t.kind + (t.enabled ? '' : ':off')).join('+') || 'no-tracks')
+      : 'none';
+    L.push('myMedia : ' + ls + '   mic=' + state.micOn + ' cam=' + state.camOn);
+    L.push('peers   : ' + state.members.size);
+    state.members.forEach((m, id) => {
+      const ice = (m.call && m.call.peerConnection) ? m.call.peerConnection.iceConnectionState : '-';
+      const conn = (m.call && m.call.peerConnection) ? m.call.peerConnection.connectionState : '-';
+      const stream = m.stream ? (m.stream.getTracks().map((t) => t.kind).join('+') || 'empty') : 'none';
+      L.push('  - ' + (m.name || '?') + '  ' + id);
+      L.push('      data=' + (m.dataConn ? (m.dataConn.open ? 'OPEN' : 'pending') : 'none') +
+             '  call=' + (m.call ? 'yes' : 'no') + '  ice=' + ice + '  pc=' + conn + '  stream=' + stream);
+    });
+    L.push('--- event log (newest last) ---');
+    diagLog.slice(-140).forEach((e) => L.push(fmtT(e.t) + '  ' + e.line));
+    return L.join('\n');
+  }
+
+  let diagTimer = null;
+  function toggleDiag(root) {
+    root.classList.toggle('lv-diag-open');
+    const open = root.classList.contains('lv-diag-open');
+    if (diagTimer) { clearInterval(diagTimer); diagTimer = null; }
+    if (open) { refreshDiag(); diagTimer = setInterval(refreshDiag, 1500); }
+  }
+  function refreshDiag() {
+    if (!ui || !ui.classList.contains('lv-diag-open')) return;
+    const body = ui.querySelector('.lv-diag-body');
+    if (!body) return;
+    const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 30;
+    body.textContent = diagText();
+    if (atBottom) body.scrollTop = body.scrollHeight;
   }
 
   // ------------------------------------------------------------ controls ------

@@ -90,6 +90,7 @@ html.couch-pinned { background: #000 !important; }
 #couch-overlay .lv-logo { font-weight: 700; letter-spacing: 0.3px; color: #0fb5a3; }
 #couch-overlay .lv-room { font-variant: tabular-nums; opacity: 0.8; font-weight: 600; }
 
+#couch-overlay .lv-diagtoggle,
 #couch-overlay .lv-chattoggle,
 #couch-overlay .lv-pin,
 #couch-overlay .lv-collapse {
@@ -104,12 +105,36 @@ html.couch-pinned { background: #000 !important; }
   border-radius: 6px;
   opacity: 0.75;
 }
-#couch-overlay .lv-chattoggle { margin-left: auto; }
+#couch-overlay .lv-diagtoggle { margin-left: auto; }
 #couch-overlay .lv-collapse { font-size: 16px; }
+#couch-overlay .lv-diagtoggle:hover,
 #couch-overlay .lv-chattoggle:hover,
 #couch-overlay .lv-pin:hover,
 #couch-overlay .lv-collapse:hover { opacity: 1; background: rgba(255, 255, 255, 0.1); }
 #couch-overlay .lv-pin.lv-active { opacity: 1; background: rgba(15, 181, 163, 0.35); }
+
+/* Diagnostics panel */
+#couch-overlay .lv-diag { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column;
+  border-top: 1px solid rgba(255, 255, 255, 0.08); }
+#couch-overlay.lv-diag-open .lv-diag { display: flex; }
+#couch-overlay.lv-diag-open .lv-tiles,
+#couch-overlay.lv-diag-open .lv-chat { display: none; }
+#couch-overlay .lv-diag-bar {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+#couch-overlay .lv-diag-title { font-size: 12px; font-weight: 700; color: #5fded0; }
+#couch-overlay .lv-diag-copy {
+  margin-left: auto; padding: 5px 12px; border: none; border-radius: 7px;
+  background: linear-gradient(90deg, #0fb5a3, #0a7a6e); color: #04221d;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+}
+#couch-overlay .lv-diag-copy:hover { filter: brightness(1.1); }
+#couch-overlay .lv-diag-body {
+  flex: 1 1 auto; min-height: 90px; overflow: auto; margin: 0; padding: 8px 10px;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10.5px; line-height: 1.45;
+  color: #cfeee8; white-space: pre-wrap; word-break: break-word; user-select: text;
+}
 
 /* Unread-message badge on the chat toggle */
 #couch-overlay .lv-unread {
@@ -289,6 +314,7 @@ html.couch-pinned { background: #000 !important; }
 }
 #couch-overlay.lv-collapsed .lv-tiles,
 #couch-overlay.lv-collapsed .lv-chat,
+#couch-overlay.lv-collapsed .lv-diag,
 #couch-overlay.lv-collapsed .lv-controls,
 #couch-overlay.lv-collapsed .lv-status,
 #couch-overlay.lv-collapsed .lv-resizer { display: none; }
