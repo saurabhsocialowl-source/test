@@ -18,6 +18,14 @@
   if (window.__couchContent) return;
   window.__couchContent = true;
 
+  // Default signaling broker for EVERYONE (host + joiners must share one).
+  // Empty string = the free PeerJS public cloud (unreliable / rate-limited).
+  // After you deploy signal-server, set this to your host, e.g.
+  //   'signal.example.com'   (wss on port 443) - then rebuild and everyone
+  // auto-connects through your reliable broker. A per-user override is still
+  // available in the popup's Advanced field.
+  const DEFAULT_BROKER = '';
+
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
@@ -919,7 +927,7 @@
   async function startParty({ room, name, brokerHost, host }) {
     state.room = (room || randomId()).toUpperCase();
     state.name = name || state.name || 'Guest';
-    state.brokerHost = brokerHost || '';
+    state.brokerHost = brokerHost || DEFAULT_BROKER;
     state.isHost = !!host;
     state.hostId = hostIdFor(state.room);
     // Host owns the rendezvous id; joiners get a unique random id.

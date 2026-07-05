@@ -1,0 +1,29 @@
+# systemd unit for the Couch signaling server (Hetzner / any Linux box).
+# Install:
+#   sudo cp couch-signal.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now couch-signal
+# Adjust WorkingDirectory / User / paths to your server.
+
+[Unit]
+Description=Couch signaling server (PeerJS broker)
+After=network.target
+
+[Service]
+Type=simple
+# Where you cloned the repo, e.g. /opt/couch/signal-server
+WorkingDirectory=/opt/couch/watch-party/signal-server
+Environment=PORT=9000
+Environment=HOST=127.0.0.1
+Environment=PATH_PREFIX=/
+Environment=KEY=peerjs
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
