@@ -24,7 +24,7 @@
   //   'signal.example.com'   (wss on port 443) - then rebuild and everyone
   // auto-connects through your reliable broker. A per-user override is still
   // available in the popup's Advanced field.
-  const DEFAULT_BROKER = '';
+  const DEFAULT_BROKER = 'signal.vermasaurabh.com';
 
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },

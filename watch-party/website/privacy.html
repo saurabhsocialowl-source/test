@@ -54,13 +54,12 @@
     </table>
 
     <h2>Signaling broker</h2>
-    <p>To introduce party members to each other, Couch uses a <strong>signaling broker</strong>.
-    By default this is the free <strong>PeerJS public cloud</strong> (<code>peerjs.com</code>).
-    The broker only relays the small connection-setup messages (temporary peer IDs and WebRTC
-    negotiation) needed to establish a direct connection. <strong>It does not carry your audio,
-    video, chat, playback data, or any Netflix content</strong> - those flow directly between
-    participants. You may point Couch at your own self-hosted broker in the extension's
-    Advanced settings.</p>
+    <p>To introduce party members to each other, Couch uses a <strong>signaling broker</strong>
+    (a small PeerJS server operated by Couch at <code>signal.vermasaurabh.com</code>). The broker
+    only relays the small connection-setup messages (temporary peer IDs and WebRTC negotiation)
+    needed to establish a direct connection. <strong>It does not carry your audio, video, chat,
+    playback data, or any streaming content</strong> - those flow directly between participants.
+    You may point Couch at a different broker in the extension's Advanced settings.</p>
 
     <h2>STUN/TURN servers</h2>
     <p>To establish direct connections across networks, Couch uses public STUN servers and, as a
