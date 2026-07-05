@@ -35,27 +35,23 @@
     { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
   ];
 
-  // Remote <video> elements carry audio, so browsers block autoplay until the
-  // page sees a user gesture. We try to play immediately and, if blocked, queue
-  // the element and resume them all on the first click/keypress on the page.
-  const pendingMedia = new Set();
+  // Browsers block autoplay of media WITH audio until the page sees a user
+  // gesture. To make peers' video visible immediately, remote tiles start MUTED
+  // (muted autoplay is always allowed) and unmute on the first click/keypress.
+  const remoteVideos = new Set();
   let gestureHookInstalled = false;
-  function playMedia(v) {
+  function playMedia(v, remote) {
+    if (remote) remoteVideos.add(v);
     const p = v.play();
-    if (p && p.catch) {
-      p.catch(() => {
-        pendingMedia.add(v);
-        installGestureHook();
-      });
-    }
+    if (p && p.catch) p.catch(() => {});
+    if (remote) installGestureHook();   // so we can unmute on first gesture
   }
   function installGestureHook() {
     if (gestureHookInstalled) return;
     gestureHookInstalled = true;
-    toast('Click anywhere to enable party audio/video');
+    toast('Click anywhere to unmute the call');
     const resume = () => {
-      pendingMedia.forEach((v) => { v.play().catch(() => {}); });
-      pendingMedia.clear();
+      remoteVideos.forEach((v) => { v.muted = false; v.play().catch(() => {}); });
       window.removeEventListener('click', resume, true);
       window.removeEventListener('keydown', resume, true);
       gestureHookInstalled = false;
@@ -309,6 +305,10 @@
       if (p.disconnected) { try { p.reconnect(); } catch (e) {} return; }
       // Joiner: keep trying to reach the host until the data channel is open.
       if (!state.isHost && state.hostId && !hostDataOpen()) connectData(state.hostId);
+      // For every connected peer without media yet, (re)try the media call.
+      state.members.forEach((m, id) => {
+        if (m.dataConn && m.dataConn.open && !m.stream) ensureMedia(id);
+      });
     }, 5000);
   }
   function stopWatchdog() {
@@ -359,14 +359,22 @@
 
   function ensureMedia(peerId) {
     const m = ensureMember(peerId);
-    if (!m || m.call) return;
+    if (!m) return;
+    if (m.stream) return;                                  // media already flowing
+    // A call was placed but no stream arrived - it stalled. Tear it down and retry.
+    if (m.call && m._callStart && Date.now() - m._callStart > 9000) {
+      try { m.call.close(); } catch (e) {}
+      m.call = null;
+    }
+    if (m.call) return;                                    // attempt in flight
     if (iInitiateTo(peerId)) {
+      m._callStart = Date.now();
       const call = state.peer.call(peerId, state.localStream || new MediaStream(), {
         metadata: { name: state.name },
       });
       setupCall(call);
     }
-    // else: wait for their incoming call
+    // else: wait for their incoming call (their side initiates)
   }
 
   function setupDataConn(conn, incoming) {
@@ -449,6 +457,7 @@
     call.on('stream', (stream) => {
       log('media stream from', peerId, stream.getTracks().map((t) => t.kind).join('+'));
       m.stream = stream;
+      m._callStart = 0;
       renderPeerTile(peerId, m);
     });
     call.on('close', () => { m.call = null; });
@@ -806,7 +815,7 @@
     const v = tile.querySelector('video');
     if (state.localStream && v.srcObject !== state.localStream) {
       v.srcObject = state.localStream;
-      playMedia(v);
+      playMedia(v, false);   // local tile is always muted anyway
     }
     tile.classList.toggle('lv-camoff', !state.camOn);
   }
@@ -817,15 +826,18 @@
     if (!m.tile) {
       m.tile = document.createElement('div');
       m.tile.className = 'lv-tile lv-connecting';
-      m.tile.innerHTML = `<video autoplay playsinline></video><span class="lv-name"></span>`;
+      // Start muted so the video autoplays without a click; unmute on gesture.
+      m.tile.innerHTML = `<video autoplay playsinline muted></video><span class="lv-name"></span>`;
       tiles.appendChild(m.tile);
     }
-    m.tile.querySelector('.lv-name').textContent = m.name;
+    m.tile.querySelector('.lv-name').textContent = m.name || 'Guest';
+    // They are connected once the data channel is open, even before media lands.
+    if (m.dataConn && m.dataConn.open) m.tile.classList.remove('lv-connecting');
     const v = m.tile.querySelector('video');
     if (m.stream && v.srcObject !== m.stream) {
       v.srcObject = m.stream;
       m.tile.classList.remove('lv-connecting');
-      playMedia(v);
+      playMedia(v, true);
     }
   }
 
