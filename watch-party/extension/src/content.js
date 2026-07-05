@@ -29,7 +29,9 @@
   // Our own TURN relay (coturn on the Hetzner box) so peer connections traverse
   // strict/symmetric NATs. The free public TURN we used before (openrelay) was
   // dead, which is why data channels reached the host but never opened.
-  const TURN_HOST = 'signal.vermasaurabh.com';
+  // Use the server's RAW IP for STUN/TURN so it bypasses Cloudflare (which only
+  // proxies web ports - port 3478 behind an orange-cloud record is unreachable).
+  const TURN_HOST = '89.167.47.11';
   const TURN_USER = 'couch';
   const TURN_PASS = 'couch-turn-4Kp9x2Qm';
   const ICE_SERVERS = [
