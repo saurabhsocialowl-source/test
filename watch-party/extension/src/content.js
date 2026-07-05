@@ -26,13 +26,17 @@
   // available in the popup's Advanced field.
   const DEFAULT_BROKER = 'signal.vermasaurabh.com';
 
+  // Our own TURN relay (coturn on the Hetzner box) so peer connections traverse
+  // strict/symmetric NATs. The free public TURN we used before (openrelay) was
+  // dead, which is why data channels reached the host but never opened.
+  const TURN_HOST = 'signal.vermasaurabh.com';
+  const TURN_USER = 'couch';
+  const TURN_PASS = 'couch-turn-4Kp9x2Qm';
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    // Free TURN relays so media still connects through strict/symmetric NATs.
-    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'stun:' + TURN_HOST + ':3478' },
+    { urls: 'turn:' + TURN_HOST + ':3478?transport=udp', username: TURN_USER, credential: TURN_PASS },
+    { urls: 'turn:' + TURN_HOST + ':3478?transport=tcp', username: TURN_USER, credential: TURN_PASS },
   ];
 
   // Browsers block autoplay of media WITH audio until the page sees a user
@@ -396,12 +400,21 @@
     }
   }
 
+  function attachIceLog(pc, label) {
+    if (!pc || pc.__couchIce) return;
+    pc.__couchIce = true;
+    pc.addEventListener('iceconnectionstatechange', () => log('ice[' + label + ']', pc.iceConnectionState));
+    pc.addEventListener('icecandidateerror', (e) => log('ice-cand-error[' + label + ']', e && (e.errorCode + ' ' + e.url)));
+  }
+
   function setupDataConn(conn, incoming) {
     const peerId = conn.peer;
     const m = ensureMember(peerId, conn.metadata && conn.metadata.name);
     m.dataConn = conn;
 
     log('data-conn', incoming ? 'incoming from' : 'outgoing to', peerId);
+    // PeerJS creates the RTCPeerConnection during negotiation - hook ICE once it exists.
+    setTimeout(() => attachIceLog(conn.peerConnection, 'data'), 300);
     conn.on('open', () => {
       m._connecting = 0;
       state._hostRetries = 0;
@@ -986,12 +999,13 @@
     L.push('myMedia : ' + ls + '   mic=' + state.micOn + ' cam=' + state.camOn);
     L.push('peers   : ' + state.members.size);
     state.members.forEach((m, id) => {
+      const dice = (m.dataConn && m.dataConn.peerConnection) ? m.dataConn.peerConnection.iceConnectionState : '-';
       const ice = (m.call && m.call.peerConnection) ? m.call.peerConnection.iceConnectionState : '-';
       const conn = (m.call && m.call.peerConnection) ? m.call.peerConnection.connectionState : '-';
       const stream = m.stream ? (m.stream.getTracks().map((t) => t.kind).join('+') || 'empty') : 'none';
       L.push('  - ' + (m.name || '?') + '  ' + id);
       L.push('      data=' + (m.dataConn ? (m.dataConn.open ? 'OPEN' : 'pending') : 'none') +
-             '  call=' + (m.call ? 'yes' : 'no') + '  ice=' + ice + '  pc=' + conn + '  stream=' + stream);
+             '  dataIce=' + dice + '  call=' + (m.call ? 'yes' : 'no') + '  mediaIce=' + ice + '  pc=' + conn + '  stream=' + stream);
     });
     L.push('--- event log (newest last) ---');
     diagLog.slice(-140).forEach((e) => L.push(fmtT(e.t) + '  ' + e.line));
