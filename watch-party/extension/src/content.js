@@ -73,6 +73,7 @@
     lastAppliedAt: 0,
     videoId: null,            // Netflix title everyone should be on
     titlePollTimer: null,
+    watchdogTimer: null,      // self-healing broker/host reconnection loop
   };
 
   // ------------------------------------------------------------------ utils ---
@@ -246,32 +247,64 @@
       if (state.inParty) { try { peer.reconnect(); } catch (e) {} }
     });
 
+    peer.on('close', () => {
+      // Peer destroyed (fatal). The watchdog will rebuild it while in a party.
+      state.connected = false; saveStatus();
+    });
+
     peer.on('error', (err) => {
-      log('peer error', err && err.type, err && err.message);
-      if (err && err.type === 'unavailable-id') {
-        // Host id still held by our previous (now-dead) tab after a refresh.
-        // Wait for the broker to free it, then re-register.
-        if (state.isHost && state.inParty && (state._idRetries = (state._idRetries || 0) + 1) <= 6) {
-          setTimeout(() => { try { if (state.peer) state.peer.destroy(); } catch (e) {} initPeer(); }, 1800);
-        } else {
-          toast('That code is taken - try creating again');
+      const type = err && err.type;
+      log('peer error', type, err && err.message);
+      if (type === 'unavailable-id') {
+        // Our host id is still held by a previous (now-dead) tab. Wait for the
+        // broker to free it, then re-register. Keep trying - the watchdog backs us up.
+        if (state.isHost && state.inParty) {
+          state._idRetries = (state._idRetries || 0) + 1;
+          setTimeout(() => { if (state.inParty && !state.connected) reinitPeer(); }, 2000);
         }
-      } else if (err && err.type === 'peer-unavailable') {
-        // Host not ready yet (e.g. both navigated at once) - retry a few times.
-        if (hostDataOpen()) return;               // already connected; ignore
-        if (!state.isHost && state.inParty &&
-            (state._hostRetries = (state._hostRetries || 0) + 1) <= 8) {
-          setTimeout(() => { if (!hostDataOpen()) connectData(state.hostId); }, 1800);
-        } else {
-          // Give up cleanly so the next attempt starts fresh (no stale session).
-          toast('Could not reach the host. Make sure their party is open, then rejoin.');
-          try { chrome.storage.local.set({ couchActive: null }); } catch (e) {}
-          leaveParty();
+      } else if (type === 'peer-unavailable') {
+        // Host not registered right now (flaky broker / host reloading). Do NOT
+        // give up - the watchdog keeps retrying until the host is reachable.
+        if (!hostDataOpen()) {
+          state._hostRetries = (state._hostRetries || 0) + 1;
+          if (state._hostRetries === 1) toast('Waiting for the host to come online…');
+          setTimeout(() => { if (state.inParty && !hostDataOpen()) connectData(state.hostId); }, 2500);
         }
-      } else if (err && err.type === 'network') {
-        toast('Signaling network hiccup - retrying…');
+      } else if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(type)) {
+        // Lost the broker socket. Reconnect (keeps live P2P channels); only
+        // fully rebuild if the peer was destroyed.
+        if (state.inParty) setTimeout(() => {
+          if (!state.inParty || state.connected) return;
+          const p = state.peer;
+          if (!p || p.destroyed) reinitPeer();
+          else { try { p.reconnect(); } catch (e) { reinitPeer(); } }
+        }, 2500);
       }
     });
+  }
+
+  // Rebuild the broker connection (keeps our peer id) after a fatal drop.
+  function reinitPeer() {
+    try { if (state.peer) state.peer.destroy(); } catch (e) {}
+    state.peer = null;
+    initPeer();
+  }
+
+  // Self-healing: keep the host registered and keep joiners reaching the host,
+  // so a flaky free-cloud broker doesn't permanently break the connection.
+  function startWatchdog() {
+    stopWatchdog();
+    state.watchdogTimer = setInterval(() => {
+      if (!state.inParty) return;
+      const p = state.peer;
+      if (!p || p.destroyed) { log('watchdog: peer gone -> reinit'); reinitPeer(); return; }
+      if (p.disconnected) { try { p.reconnect(); } catch (e) {} return; }
+      // Joiner: keep trying to reach the host until the data channel is open.
+      if (!state.isHost && state.hostId && !hostDataOpen()) connectData(state.hostId);
+    }, 5000);
+  }
+  function stopWatchdog() {
+    if (state.watchdogTimer) { clearInterval(state.watchdogTimer); state.watchdogTimer = null; }
   }
 
   // ------------------------------------------------------- mesh formation -----
@@ -297,9 +330,12 @@
   }
 
   function connectData(peerId) {
-    if (peerId === state.peerId) return;
+    if (peerId === state.peerId || !state.peer) return;
     const m = ensureMember(peerId);
-    if (m.dataConn) return;
+    if (m.dataConn && m.dataConn.open) return;                    // already connected
+    if (m._connecting && Date.now() - m._connecting < 4500) return; // attempt in flight
+    m._connecting = Date.now();
+    try { if (m.dataConn) m.dataConn.close(); } catch (e) {}       // drop a stale/failed conn
     const conn = state.peer.connect(peerId, {
       reliable: true, metadata: { name: state.name },
     });
@@ -331,6 +367,8 @@
     m.dataConn = conn;
 
     conn.on('open', () => {
+      m._connecting = 0;
+      state._hostRetries = 0;
       conn.send({ t: 'hello', name: state.name });
       ensureMedia(peerId);
 
@@ -891,6 +929,7 @@
     await ensureLocalStream();
     initPeer();
     startTitlePoll();
+    startWatchdog();
     persistActive();
     render(); saveStatus();
     return { room: state.room };
@@ -903,6 +942,7 @@
     try { if (state.peer) state.peer.destroy(); } catch (e) {}
     state.peer = null; state.connected = false;
     stopTitlePoll();
+    stopWatchdog();
     state.videoId = null;
     if (state.localStream) state.localStream.getTracks().forEach((t) => t.stop());
     state.localStream = null;

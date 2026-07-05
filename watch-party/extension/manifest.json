@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Couch - Watch Party",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Watch parties for Netflix, YouTube, Prime Video, JioHotstar, Disney+ & ZEE5 - synced playback with group chat, voice & video.",
   "icons": {
     "16": "icons/icon-16.png",
