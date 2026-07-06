@@ -591,7 +591,11 @@
     if (state.localStream) return state.localStream;
     try {
       state.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
         video: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 24 } },
       });
       log('getUserMedia OK:', state.localStream.getTracks().map((t) => t.kind).join('+') || 'no-tracks');
