@@ -767,7 +767,39 @@
 
     ui = root;
     loadGeo(() => applyGeo(root));
+    installFullscreenHook();
     return root;
+  }
+
+  // The native Fullscreen API only paints the fullscreen element and its
+  // DOM descendants - everything else (including our overlay, normally a
+  // sibling under <html>) is hidden regardless of z-index. So when Netflix
+  // (or the user) goes fullscreen, re-parent the overlay INTO the fullscreen
+  // element for the duration, then move it back on exit.
+  let fullscreenHookInstalled = false;
+  const overlayHome = { parent: null, next: null }; // where to restore it to
+  function currentFullscreenEl() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+  function handleFullscreenChange() {
+    if (!ui) return;
+    const fsEl = currentFullscreenEl();
+    if (fsEl) {
+      if (ui.parentNode !== fsEl) {
+        overlayHome.parent = ui.parentNode;
+        overlayHome.next = ui.nextSibling;
+        fsEl.appendChild(ui);
+      }
+    } else if (overlayHome.parent) {
+      overlayHome.parent.insertBefore(ui, overlayHome.next);
+      overlayHome.parent = null; overlayHome.next = null;
+    }
+  }
+  function installFullscreenHook() {
+    if (fullscreenHookInstalled) return;
+    fullscreenHookInstalled = true;
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
   }
 
   // Visible bottom-corner grip - resizes the floating panel in both dimensions.
@@ -1074,6 +1106,7 @@
     state.localStream = null;
     applyPagePush();                 // reset any docked page transform first
     if (ui) { ui.remove(); ui = null; }
+    overlayHome.parent = null; overlayHome.next = null;
     state.room = null; state.hostId = null;
     try { chrome.storage.local.set({ couchActive: null }); } catch (e) {}
     saveStatus();

@@ -114,7 +114,7 @@ html.couch-pinned { background: #000 !important; }
 #couch-overlay .lv-pin.lv-active { opacity: 1; background: rgba(15, 181, 163, 0.35); }
 
 /* Diagnostics panel */
-#couch-overlay .lv-diag { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column;
+#couch-overlay .lv-diag { display: none; flex: 1 1 auto; min-height: 0; overflow: hidden; flex-direction: column;
   border-top: 1px solid rgba(255, 255, 255, 0.08); }
 #couch-overlay.lv-diag-open .lv-diag { display: flex; }
 #couch-overlay.lv-diag-open .lv-tiles,
@@ -161,6 +161,11 @@ html.couch-pinned { background: #000 !important; }
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  /* Without this, when the panel is squeezed short, the chat log + chat form
+     together can need more height than this box actually has, and the chat
+     form (input + send) bleeds down past this box's edge and visually
+     overlaps the controls row below it. Clipping here keeps it contained. */
+  overflow: hidden;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 #couch-overlay.lv-chathidden .lv-chat { display: none; }
@@ -219,18 +224,22 @@ html.couch-pinned { background: #000 !important; }
 
 #couch-overlay .lv-tiles {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-auto-rows: min-content;
+  /* Auto-fit: as many ~100px+ columns as fit side by side; when the panel is
+     too narrow for 2, tiles reflow to stack one under the other. */
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  /* Fixed-ish row height range (not width-driven aspect-ratio) so a wide/
+     landscape panel can't inflate tile height and squeeze out the chat/
+     controls below it. */
+  grid-auto-rows: minmax(70px, 150px);
   gap: 6px;
   padding: 8px;
-  flex: 0 0 auto;          /* natural height; chat takes the remaining space */
+  flex: 0 1 auto;          /* can shrink if the panel gets short; never forces siblings out */
   max-height: 55%;
   overflow-y: auto;
 }
 
 #couch-overlay .lv-tile {
   position: relative;
-  aspect-ratio: 4 / 3;
   background: #06120f;
   border-radius: 8px;
   overflow: hidden;
@@ -283,6 +292,7 @@ html.couch-pinned { background: #000 !important; }
   gap: 6px;
   padding: 8px 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;   /* always keep full size - never squeezed by chat/tiles above */
 }
 
 #couch-overlay .lv-btn {
@@ -305,6 +315,7 @@ html.couch-pinned { background: #000 !important; }
   padding: 6px 10px 10px;
   font-size: 12px;
   opacity: 0.85;
+  flex: 0 0 auto;   /* always keep full size */
 }
 
 #couch-overlay.lv-collapsed {
