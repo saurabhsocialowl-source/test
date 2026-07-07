@@ -32,14 +32,37 @@
   // Use the server's RAW IP for STUN/TURN so it bypasses Cloudflare (which only
   // proxies web ports - port 3478 behind an orange-cloud record is unreachable).
   const TURN_HOST = '89.167.47.11';
-  const TURN_USER = 'couch';
-  const TURN_PASS = 'couch-turn-4Kp9x2Qm';
-  const ICE_SERVERS = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:' + TURN_HOST + ':3478' },
-    { urls: 'turn:' + TURN_HOST + ':3478?transport=udp', username: TURN_USER, credential: TURN_PASS },
-    { urls: 'turn:' + TURN_HOST + ':3478?transport=tcp', username: TURN_USER, credential: TURN_PASS },
-  ];
+  // Short-lived TURN credentials (coturn REST convention: expiring username +
+  // HMAC-SHA1 credential), minted per-party by the signal server so no
+  // permanent TURN password ships inside the public extension bundle. Falls
+  // back to a static credential if the endpoint isn't reachable/deployed yet
+  // (e.g. an older signal-server), so this never breaks connectivity.
+  const TURN_CREDS_URL = 'https://' + DEFAULT_BROKER + '/turn-creds';
+  const TURN_STATIC_FALLBACK = { username: 'couch', credential: 'couch-turn-4Kp9x2Qm' };
+
+  async function fetchTurnCreds() {
+    try {
+      const res = await fetch(TURN_CREDS_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('http ' + res.status);
+      const data = await res.json();
+      if (!data || !data.username || !data.credential) throw new Error('malformed response');
+      log('turn-creds: short-lived credential issued (ttl', data.ttl, 's)');
+      return { username: data.username, credential: data.credential };
+    } catch (e) {
+      log('turn-creds fetch failed, using static fallback:', e && e.message);
+      return TURN_STATIC_FALLBACK;
+    }
+  }
+
+  async function buildIceServers() {
+    const { username, credential } = await fetchTurnCreds();
+    return [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:' + TURN_HOST + ':3478' },
+      { urls: 'turn:' + TURN_HOST + ':3478?transport=udp', username, credential },
+      { urls: 'turn:' + TURN_HOST + ':3478?transport=tcp', username, credential },
+    ];
+  }
 
   // Browsers block autoplay of media WITH audio until the page sees a user
   // gesture. To make peers' video visible immediately, remote tiles start MUTED
@@ -92,6 +115,8 @@
     videoId: null,            // Netflix title everyone should be on
     titlePollTimer: null,
     watchdogTimer: null,      // self-healing broker/host reconnection loop
+    beaconPeer: null,         // standby "front door" if the real host has left (see below)
+    needSyncRequest: false,   // set true after joining via a beacon (no host to ask directly)
   };
 
   // ------------------------------------------------------------------ utils ---
@@ -111,7 +136,13 @@
     try { if (typeof refreshDiag === 'function') refreshDiag(); } catch (e) {}
   }
 
-  function randomId(n = 8) {
+  // Default length used for freshly-created room codes. 12 chars from this
+  // 31-symbol alphabet is ~59 bits of entropy (vs. ~40 bits at the old length
+  // of 8) - the room code doubles as the only real access control for who can
+  // join (anyone who has it can connect), so it's worth the extra couple of
+  // characters. Still short enough to copy/paste comfortably; the invite link
+  // (the recommended way to share it) carries it automatically either way.
+  function randomId(n = 12) {
     const c = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
     let s = '';
     for (let i = 0; i < n; i++) s += c[Math.floor(Math.random() * c.length)];
@@ -201,6 +232,16 @@
     return [state.name, ...[...state.members.values()].map((m) => m.name)];
   }
 
+  // Real peer IDs of everyone currently in the room except one (used to
+  // introduce a newcomer). Shared by the host's own welcome reply and by the
+  // standby beacon (see "host resilience" below) so both hand off identical
+  // info regardless of who answers the door.
+  function membersListExcluding(exceptId) {
+    return [...state.members.entries()]
+      .filter(([id]) => id !== exceptId)
+      .map(([id, mm]) => ({ peerId: id, name: mm.name }));
+  }
+
   function saveStatus() {
     const status = {
       inParty: state.inParty, connected: state.connected, room: state.room,
@@ -235,8 +276,8 @@
 
   // ------------------------------------------------------- PeerJS plumbing ----
 
-  function peerOptions() {
-    const opts = { debug: 1, config: { iceServers: ICE_SERVERS } };
+  function peerOptions(iceServers) {
+    const opts = { debug: 1, config: { iceServers } };
     if (state.brokerHost) {
       // Accept "host", "host:port" or "wss://host:port/path".
       let h = state.brokerHost.replace(/^wss?:\/\//, '');
@@ -252,8 +293,10 @@
     return opts;
   }
 
-  function initPeer() {
-    const peer = new Peer(state.peerId, peerOptions());
+  async function initPeer() {
+    const iceServers = await buildIceServers();
+    if (!state.inParty) return; // left the party while credentials were in flight
+    const peer = new Peer(state.peerId, peerOptions(iceServers));
     state.peer = peer;
 
     log('broker connecting via', state.brokerHost || 'peerjs-cloud', 'as', state.peerId, state.isHost ? '(host)' : '(joiner)');
@@ -335,6 +378,10 @@
       if (p.disconnected) { try { p.reconnect(); } catch (e) {} return; }
       // Joiner: keep trying to reach the host until the data channel is open.
       if (!state.isHost && state.hostId && !hostDataOpen()) connectData(state.hostId);
+      // Safety net: if hostId is nobody's and I'm the designated standby,
+      // stand in (covers the beacon-holder itself later leaving, or a host
+      // vanishing without a clean 'peer-left' broadcast, e.g. a crash).
+      maybeBecomeBeacon();
       // For every connected peer without media yet, (re)try the media call.
       state.members.forEach((m, id) => {
         if (m.dataConn && m.dataConn.open && !m.stream) ensureMedia(id);
@@ -432,12 +479,13 @@
       conn.send({ t: 'hello', name: state.name });
       ensureMedia(peerId);
 
+      // Joined via a beacon (no real host to ask): the first real member
+      // connection to actually open gets asked for the current position.
+      if (state.needSyncRequest) { state.needSyncRequest = false; sendTo(peerId, { t: 'sync-request' }); }
+
       if (state.isHost && incoming) {
         // A newcomer reached the host. Introduce everyone.
-        const others = [...state.members.entries()]
-          .filter(([id]) => id !== peerId)
-          .map(([id, mm]) => ({ peerId: id, name: mm.name }));
-        conn.send({ t: 'welcome', members: others });
+        conn.send({ t: 'welcome', members: membersListExcluding(peerId) });
         broadcastExcept(peerId, { t: 'peer-joined', peerId, name: m.name });
         // Put the newcomer on the same title we're watching.
         if (state.videoId) conn.send({ t: 'title', videoId: state.videoId });
@@ -458,14 +506,23 @@
         ensureMember(fromId, msg.name); render(); saveStatus();
         break;
       case 'welcome':
-        // From the host: connect to every other existing member.
+        // From the host (or a standby beacon - see "host resilience"): connect
+        // to every other existing member.
         (msg.members || []).forEach((p) => {
           ensureMember(p.peerId, p.name);
           ensureData(p.peerId);
           ensureMedia(p.peerId);
         });
-        ensureMedia(fromId); // also bring up media with the host
-        sendTo(fromId, { t: 'sync-request' });
+        if (msg.beacon) {
+          // The sender is just a temporary "front door", not a real
+          // participant - it never carries media, so don't try to call it.
+          // Ask the first real member whose connection actually opens for the
+          // current position instead (see setupDataConn's open handler).
+          state.needSyncRequest = true;
+        } else {
+          ensureMedia(fromId); // also bring up media with the host
+          sendTo(fromId, { t: 'sync-request' });
+        }
         render();
         break;
       case 'peer-joined':
@@ -527,7 +584,93 @@
     if (m.tile) m.tile.remove();
     state.members.delete(peerId);
     if (announce) broadcast({ t: 'peer-left', peerId });
+    // If the peer we just lost WAS the room's front door, the room becomes
+    // unjoinable for anyone new (existing members stay meshed to each other
+    // fine). See "host resilience" below.
+    if (peerId === state.hostId) maybeBecomeBeacon();
     render(); saveStatus();
+  }
+
+  // ------------------------------------------------ host resilience (beacon) --
+  //
+  // New joiners only ever know how to find the room's fixed hostId - that's
+  // the sole discovery mechanism. If the person who created the party (the
+  // literal occupant of hostId) leaves, existing members stay connected to
+  // each other (the mesh survives), but nobody NEW can get in: hostId is
+  // vacant and every join attempt just times out.
+  //
+  // Fix: once the real host is gone, the surviving member with the
+  // lexicographically-lowest peer ID opens a second, minimal Peer registered
+  // AT hostId - a "beacon". Its only job is to answer a newcomer's connection
+  // with the current member list (exactly like the host's own welcome reply)
+  // so the newcomer meshes in with everyone's REAL peer IDs, then it steps
+  // back. It never joins the call/data mesh under the hostId identity, so it
+  // doesn't touch the already-live, working connections at all.
+  //
+  // If two members briefly both think they're "the lowest" (race), only one
+  // can actually register hostId - the broker enforces that uniqueness, so
+  // the loser just backs off. No coordination messages needed for that part.
+
+  function isDesignatedStandby() {
+    const candidates = [state.peerId, ...state.members.keys()];
+    return candidates.reduce((a, b) => (a < b ? a : b)) === state.peerId;
+  }
+
+  function maybeBecomeBeacon() {
+    if (!state.inParty || state.isHost) return;   // the real host doesn't need one
+    if (state.beaconPeer) return;                 // already running one
+    if (hostDataOpen()) return;                   // a real host (or beacon) is already here
+    if (!isDesignatedStandby()) return;            // someone else should do it
+    // Cheap cooldown: a member who joined via a beacon has that connection
+    // deliberately closed ~1s later (see startBeacon), so hostDataOpen() reads
+    // "nobody home" for them almost immediately even while an existing beacon
+    // is healthy elsewhere. Rather than track "was that a real host or a
+    // beacon" precisely, just bound retry frequency - a failed attempt (the
+    // broker rejects a second registration of the same id) is harmless.
+    if (state._lastBeaconAttempt && Date.now() - state._lastBeaconAttempt < 15000) return;
+    state._lastBeaconAttempt = Date.now();
+    startBeacon();
+  }
+
+  async function startBeacon() {
+    log('beacon: attempting to stand in for the host at', state.hostId);
+    // The beacon<->joiner data connection still needs real STUN/TURN (same as
+    // any other connection) - it's just a normal peer connection whose only
+    // job happens to be relaying one 'welcome' message.
+    const iceServers = await buildIceServers();
+    if (!state.inParty || state.isHost || state.beaconPeer || hostDataOpen()) return; // stale by the time creds arrived
+    const bp = new Peer(state.hostId, peerOptions(iceServers));
+    state.beaconPeer = bp;
+
+    bp.on('open', () => log('beacon: standing in as', state.hostId));
+
+    bp.on('connection', (conn) => {
+      conn.on('open', () => {
+        log('beacon: greeting new joiner', conn.peer);
+        // Include our OWN real identity (not this throwaway hostId one) as a
+        // normal member, so the newcomer meshes with us the regular way too.
+        const members = [...membersListExcluding(null), { peerId: state.peerId, name: state.name }];
+        conn.send({ t: 'welcome', members, beacon: true });
+        if (state.videoId) conn.send({ t: 'title', videoId: state.videoId });
+        // Job done for this newcomer - don't linger as a fake mesh member.
+        setTimeout(() => { try { conn.close(); } catch (e) {} }, 1000);
+      });
+    });
+
+    const giveUp = () => {
+      try { bp.destroy(); } catch (e) {}
+      if (state.beaconPeer === bp) state.beaconPeer = null;
+    };
+    bp.on('error', (err) => {
+      log('beacon error (standing down):', err && err.type);
+      giveUp(); // e.g. unavailable-id: someone else already has it, or the real host is back
+    });
+    bp.on('disconnected', giveUp);
+    bp.on('close', giveUp);
+  }
+
+  function stopBeacon() {
+    if (state.beaconPeer) { try { state.beaconPeer.destroy(); } catch (e) {} state.beaconPeer = null; }
   }
 
   // ----------------------------------------------------------- messaging ------
@@ -1053,6 +1196,7 @@
       ? (state.localStream.getTracks().map((t) => t.kind + (t.enabled ? '' : ':off')).join('+') || 'no-tracks')
       : 'none';
     L.push('myMedia : ' + ls + '   mic=' + state.micOn + ' cam=' + state.camOn);
+    L.push('beacon  : ' + (state.beaconPeer ? 'standing in for the host (' + (state.beaconPeer.open ? 'open' : 'connecting') + ')' : 'no - not needed right now'));
     L.push('peers   : ' + state.members.size);
     state.members.forEach((m, id) => {
       const dice = (m.dataConn && m.dataConn.peerConnection) ? m.dataConn.peerConnection.iceConnectionState : '-';
@@ -1103,7 +1247,7 @@
     state.inParty = true;
     state.videoId = currentVideoId();
     await ensureLocalStream();
-    initPeer();
+    await initPeer();
     startTitlePoll();
     startWatchdog();
     persistActive();
@@ -1117,6 +1261,7 @@
     [...state.members.keys()].forEach((id) => dropMember(id, false));
     try { if (state.peer) state.peer.destroy(); } catch (e) {}
     state.peer = null; state.connected = false;
+    stopBeacon();
     stopTitlePoll();
     stopWatchdog();
     state.videoId = null;

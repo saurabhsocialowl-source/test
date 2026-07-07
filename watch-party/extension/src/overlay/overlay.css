@@ -87,8 +87,16 @@ html.couch-pinned { background: #000 !important; }
   background: linear-gradient(90deg, rgba(15, 181, 163, 0.25), transparent);
 }
 
-#couch-overlay .lv-logo { font-weight: 700; letter-spacing: 0.3px; color: #0fb5a3; }
-#couch-overlay .lv-room { font-variant: tabular-nums; opacity: 0.8; font-weight: 600; }
+#couch-overlay .lv-logo { font-weight: 700; letter-spacing: 0.3px; color: #0fb5a3; flex: 0 0 auto; }
+#couch-overlay .lv-room {
+  font-variant: tabular-nums;
+  opacity: 0.8;
+  font-weight: 600;
+  min-width: 0;           /* let it actually shrink instead of pushing the buttons off */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 #couch-overlay .lv-diagtoggle,
 #couch-overlay .lv-chattoggle,

@@ -79,3 +79,41 @@ Two ways (they can be combined):
 
 The extension connects over **wss on port 443** using PeerJS defaults
 (path `/`, key `peerjs`), which is exactly what this server serves.
+
+---
+
+## Hardening: short-lived TURN credentials
+
+By default the extension ships with a **static** TURN username/password. That's
+fine to get started, but since the extension's source is public (Chrome Web
+Store listings and this repo can both be inspected), a fixed password baked
+into it could be extracted and used by anyone to relay unrelated traffic
+through your TURN server.
+
+This server can instead mint **short-lived, per-session credentials** on
+demand (`GET /turn-creds`), following coturn's standard "REST API" convention
+(an expiring username + an HMAC-SHA1 credential). The secret used to sign
+them never leaves the server - it's not in the extension at all. The
+extension always tries this endpoint first and only falls back to the static
+credential if it's unreachable (e.g. an older, not-yet-upgraded server), so
+upgrading is a zero-downtime, non-breaking change.
+
+To turn it on (after `setup-hetzner.sh` and `setup-turn-hetzner.sh` have
+already been run once):
+
+```bash
+sudo bash deploy/harden-turn-credentials.sh signal.example.com
+```
+
+This reconfigures coturn for `use-auth-secret` mode, restarts the signal
+server with the matching `TURN_SECRET`, and adds the `/turn-creds` nginx
+route. Verify:
+
+```bash
+curl https://signal.example.com/turn-creds
+# -> {"username":"<expiry-timestamp>:couch","credential":"...","ttl":21600}
+```
+
+The default TTL is 6 hours (long enough to cover a full watch-party session
+without needing credentials to be refreshed mid-call); override with the
+`TURN_TTL_SECONDS` env var if you want something different.
