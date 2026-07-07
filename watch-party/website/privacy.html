@@ -63,9 +63,10 @@
 
     <h2>STUN/TURN servers</h2>
     <p>To establish direct connections across networks, Couch uses public STUN servers and, as a
-    fallback, public TURN relay servers. These help your devices find a network path to each
-    other. If a TURN relay is used, encrypted call media may pass through it in transit; it is
-    not stored, and the relay operators’ terms apply to that transient traffic.</p>
+    fallback, a TURN relay operated by Couch (on the same server as the signaling broker). These
+    help your devices find a network path to each other. If the TURN relay is used, your call
+    media passes through it in transit only to relay packets between you and the other
+    participant(s) - it is not recorded, inspected, or stored.</p>
 
     <h2>Permissions</h2>
     <ul>

@@ -44,19 +44,27 @@
   // Browsers block autoplay of media WITH audio until the page sees a user
   // gesture. To make peers' video visible immediately, remote tiles start MUTED
   // (muted autoplay is always allowed) and unmute on the first click/keypress.
+  // Once that first gesture has happened, the page keeps "user activation" for
+  // the rest of the session, so any LATER peer who joins mid-call is unmuted
+  // immediately instead of silently waiting for another click.
   const remoteVideos = new Set();
   let gestureHookInstalled = false;
+  let audioUnlocked = false;
   function playMedia(v, remote) {
-    if (remote) remoteVideos.add(v);
+    if (remote) {
+      remoteVideos.add(v);
+      if (audioUnlocked) v.muted = false;
+    }
     const p = v.play();
     if (p && p.catch) p.catch(() => {});
-    if (remote) installGestureHook();   // so we can unmute on first gesture
+    if (remote && !audioUnlocked) installGestureHook();
   }
   function installGestureHook() {
     if (gestureHookInstalled) return;
     gestureHookInstalled = true;
     toast('Click anywhere to unmute the call');
     const resume = () => {
+      audioUnlocked = true;
       remoteVideos.forEach((v) => { v.muted = false; v.play().catch(() => {}); });
       window.removeEventListener('click', resume, true);
       window.removeEventListener('keydown', resume, true);
@@ -587,22 +595,32 @@
 
   // ------------------------------------------------------------ local media ---
 
+  const AUDIO_CONSTRAINTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+
   async function ensureLocalStream() {
     if (state.localStream) return state.localStream;
     try {
       state.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: AUDIO_CONSTRAINTS,
         video: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 24 } },
       });
       log('getUserMedia OK:', state.localStream.getTracks().map((t) => t.kind).join('+') || 'no-tracks');
     } catch (e) {
-      log('getUserMedia FAILED:', e && e.name, '-', e && e.message, '(joining listen-only)');
-      toast('Mic/camera unavailable - joining in listen-only mode');
-      state.localStream = new MediaStream();
+      log('getUserMedia (audio+video) FAILED:', e && e.name, '-', e && e.message);
+      // Camera might be missing/busy while the mic is fine - don't lose working
+      // audio just because video failed. Retry audio-only before giving up.
+      try {
+        state.localStream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS });
+        log('getUserMedia OK (audio-only fallback)');
+        toast('Camera unavailable - joining with audio only');
+      } catch (e2) {
+        log('getUserMedia (audio-only) FAILED:', e2 && e2.name, '-', e2 && e2.message, '(joining listen-only)');
+        const reason = (e2 && e2.name === 'NotAllowedError') ? 'permission denied'
+          : (e2 && e2.name === 'NotReadableError') ? 'device already in use'
+          : (e2 && e2.name === 'NotFoundError') ? 'no camera/mic found' : 'unavailable';
+        toast(`Mic/camera ${reason} - joining in listen-only mode`);
+        state.localStream = new MediaStream();
+      }
     }
     applyTrackToggles();
     renderLocalTile();
@@ -731,7 +749,7 @@
         <button class="lv-btn lv-mic"   title="Mute / unmute">🎤</button>
         <button class="lv-btn lv-cam"   title="Camera on / off">📷</button>
         <button class="lv-btn lv-sync"  title="Resync everyone to my position">⟳</button>
-        <button class="lv-btn lv-copy"  title="Copy invite code">⧉</button>
+        <button class="lv-btn lv-copy"  title="Copy invite link">⧉</button>
         <button class="lv-btn lv-leave" title="Leave party">⏻</button>
       </div>
       <div class="lv-status"></div>
