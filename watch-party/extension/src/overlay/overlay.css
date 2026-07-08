@@ -232,13 +232,16 @@ html.couch-pinned { background: #000 !important; }
 
 #couch-overlay .lv-tiles {
   display: grid;
-  /* Auto-fit: as many ~100px+ columns as fit side by side; when the panel is
-     too narrow for 2, tiles reflow to stack one under the other. */
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  /* Fixed-ish row height range (not width-driven aspect-ratio) so a wide/
-     landscape panel can't inflate tile height and squeeze out the chat/
-     controls below it. */
-  grid-auto-rows: minmax(70px, 150px);
+  /* auto-fit + a bounded max track size: tiles wrap into as many columns as
+     fit, but a column can never exceed 260px wide - so in a large panel a
+     lone tile stays a normal-sized, centered rectangle instead of stretching
+     the full panel width and cropping the camera feed to a letterbox sliver.
+     (auto-fit collapses the unused tracks, so justify-content actually
+     centers the occupied ones; the bounded max is what makes that safe -
+     the old 1fr version is what caused full-width stretching.) When the
+     panel is narrow, tiles stack one under the other as before. */
+  grid-template-columns: repeat(auto-fit, minmax(120px, 260px));
+  justify-content: center;
   gap: 6px;
   padding: 8px;
   flex: 0 1 auto;          /* can shrink if the panel gets short; never forces siblings out */
@@ -248,6 +251,11 @@ html.couch-pinned { background: #000 !important; }
 
 #couch-overlay .lv-tile {
   position: relative;
+  /* Natural camera shape. Height is bounded because column width is bounded
+     (max 260px -> max ~195px tall), so tall tiles can't squeeze out the
+     chat/controls below - the failure mode the old fixed-row-height fix was
+     guarding against. */
+  aspect-ratio: 4 / 3;
   background: #06120f;
   border-radius: 8px;
   overflow: hidden;
