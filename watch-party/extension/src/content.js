@@ -929,6 +929,9 @@
     ui = root;
     loadGeo(() => applyGeo(root));
     installFullscreenHook();
+    // Re-fit the tile grid whenever the panel changes size (drag-resize,
+    // dock/undock, window resize) so tiles always use the space they can get.
+    try { new ResizeObserver(() => layoutTiles()).observe(root); } catch (e) {}
     return root;
   }
 
@@ -1057,6 +1060,7 @@
       tile.className = 'lv-tile lv-tile-local';
       tile.innerHTML = `<video autoplay playsinline muted></video><span class="lv-name">You</span>`;
       tiles.prepend(tile);
+      layoutTiles();
     }
     const v = tile.querySelector('video');
     if (state.localStream && v.srcObject !== state.localStream) {
@@ -1075,6 +1079,7 @@
       // Start muted so the video autoplays without a click; unmute on gesture.
       m.tile.innerHTML = `<video autoplay playsinline muted></video><span class="lv-name"></span>`;
       tiles.appendChild(m.tile);
+      layoutTiles();
     }
     m.tile.querySelector('.lv-name').textContent = m.name || 'Guest';
     // They are connected once the data channel is open, even before media lands.
@@ -1087,6 +1092,36 @@
     }
   }
 
+  // Size tiles like Meet/Zoom: pick the column count that lets tiles use as
+  // much of the available area (panel width x the tiles strip's height
+  // budget) as possible at their natural 4:3 shape, without distorting or
+  // pushing the chat/controls out. CSS alone can't express "fit BOTH width
+  // and height for n items", so this computes it and sets the grid columns.
+  function layoutTiles() {
+    if (!ui) return;
+    const tilesEl = ui.querySelector('.lv-tiles');
+    if (!tilesEl) return;
+    const n = tilesEl.children.length;
+    if (!n) return;
+    const GAP = 6, PAD = 16, AR = 4 / 3;
+    const W = Math.max(100, tilesEl.clientWidth - PAD);
+    // The tiles strip may use up to ~55% of the panel (matches the CSS cap).
+    const H = Math.max(80, ui.clientHeight * 0.55 - PAD);
+    let bestW = 110, bestCols = Math.min(n, 2);
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      const byWidth = (W - (cols - 1) * GAP) / cols;
+      const byHeight = ((H - (rows - 1) * GAP) / rows) * AR;
+      const w = Math.min(byWidth, byHeight);
+      if (w > bestW) { bestW = w; bestCols = cols; }
+    }
+    // Exact column count (not auto-fit) so the chosen arrangement is kept -
+    // auto-fit would happily pack extra columns when they fit, breaking e.g.
+    // an intended 2x2 into 3+1.
+    tilesEl.style.gridTemplateColumns =
+      `repeat(${bestCols}, ${Math.floor(bestW)}px)`;
+  }
+
   function render() {
     const root = buildOverlay();
     root.querySelector('.lv-room').textContent = state.room ? `#${state.room}` : '';
@@ -1097,6 +1132,7 @@
     root.querySelector('.lv-cam').classList.toggle('lv-off', !state.camOn);
     renderLocalTile();
     state.members.forEach((m, id) => renderPeerTile(id, m));
+    layoutTiles();
   }
 
   let toastTimer = null;
