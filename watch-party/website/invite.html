@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Join a Couch party</title>
+  <meta name="description" content="You have been invited to a Couch watch party." />
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="assets/icon-128.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .checks { list-style: none; padding: 0; margin: 28px auto; max-width: 460px; text-align: left; }
+    .checks li { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; font-size: 1.02rem; }
+    .checks .mark { flex: 0 0 auto; width: 20px; text-align: center; font-weight: 700; }
+    .checks .pending .mark { opacity: .45; }
+    .checks .ok    .mark { color: #23a55a; }
+    .checks .bad   .mark { color: #e2554e; }
+    .checks .sub { display: block; font-size: .88rem; opacity: .72; margin-top: 3px; }
+    .invite-main { text-align: center; padding: 46px 0 60px; }
+    .dest { font-size: .9rem; opacity: .7; margin-top: 22px; word-break: break-all; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/"><img src="assets/icon-128.png" alt="Couch logo" /> <span>Couch</span></a>
+      <nav class="nav">
+        <a href="/#features">Features</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/support">Support</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap invite-main">
+    <h1 id="headline">You have been invited to a Couch party.</h1>
+    <p class="lead" id="status">Checking a few things…</p>
+
+    <ul class="checks" id="checks">
+      <li class="pending" id="c-platform"><span class="mark">•</span><span>Desktop or laptop<span class="sub" id="s-platform">Checking…</span></span></li>
+      <li class="pending" id="c-browser"><span class="mark">•</span><span>Supported browser<span class="sub" id="s-browser">Checking…</span></span></li>
+      <li class="pending" id="c-ext"><span class="mark">•</span><span>Couch installed<span class="sub" id="s-ext">Checking…</span></span></li>
+    </ul>
+
+    <div id="actions" class="hidden">
+      <a class="btn" id="install" href="/#install">Get Couch</a>
+      <p class="hint" id="action-hint"></p>
+    </div>
+
+    <p class="dest" id="dest"></p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© 2026 Couch</span>
+      <nav class="nav">
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms</a>
+        <a href="/support">Support</a>
+      </nav>
+    </div>
+  </footer>
+
+<script>
+(function () {
+  'use strict';
+
+  // Only these hosts may ever be redirected to. Without this allowlist the page
+  // is an open redirect: anyone could mail out a couch-watchparty.netlify.app
+  // link that quietly lands on a site they control, borrowing our domain's
+  // credibility to do it. The invite is worth nothing if it can be abused that
+  // way, so an unrecognised destination is refused outright rather than
+  // "cleaned up" and followed.
+  var ALLOWED = [
+    'netflix.com', 'youtube.com', 'primevideo.com', 'hotstar.com',
+    'jiohotstar.com', 'disneyplus.com', 'zee5.com', 'tv.apple.com'
+  ];
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function setState(row, sub, state, text) {
+    var li = $(row);
+    li.className = state;
+    li.querySelector('.mark').textContent =
+      state === 'ok' ? '✓' : state === 'bad' ? '✕' : '•';
+    $(sub).textContent = text;
+  }
+
+  function fail(headline, message, showInstall) {
+    $('headline').textContent = headline;
+    $('status').textContent = message;
+    $('actions').classList.remove('hidden');
+    if (!showInstall) $('install').classList.add('hidden');
+  }
+
+  // ---- destination ---------------------------------------------------------
+
+  function parseDestination() {
+    var raw = new URLSearchParams(location.search).get('redirect');
+    if (!raw) return null;
+    var url;
+    try { url = new URL(raw); } catch (e) { return null; }
+    if (url.protocol !== 'https:') return null;
+    var host = url.hostname.toLowerCase().replace(/^www\./, '');
+    var ok = ALLOWED.some(function (d) { return host === d || host.endsWith('.' + d); });
+    return ok ? url : null;
+  }
+
+  var dest = parseDestination();
+  if (!dest) {
+    setState('c-platform', 's-platform', 'bad', '');
+    $('checks').classList.add('hidden');
+    fail('This invite link is not valid.',
+         'The link is incomplete, or it points somewhere Couch does not support. ' +
+         'Ask whoever invited you to send a fresh link from the extension.',
+         false);
+    return;
+  }
+  $('dest').textContent = 'Destination: ' + dest.hostname + dest.pathname;
+
+  // ---- checks --------------------------------------------------------------
+
+  var ua = navigator.userAgent;
+  var isMobile = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(ua) ||
+                 (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua)); // iPad desktop UA
+  if (isMobile) {
+    setState('c-platform', 's-platform', 'bad', 'Couch is a desktop browser extension.');
+    fail('Open this on a computer.',
+         'Couch runs as a browser extension, and mobile browsers cannot install ' +
+         'extensions. Send yourself this link and open it on a laptop or desktop.',
+         false);
+    return;
+  }
+  setState('c-platform', 's-platform', 'ok', 'Looks good.');
+
+  // Chromium-family only. Firefox and Safari need a different extension build.
+  var isChromium = !!window.chrome && (/Chrome|Chromium|Edg\//.test(ua)) && !/OPR\//.test(ua);
+  if (!isChromium) {
+    setState('c-browser', 's-browser', 'bad', 'Chrome, Edge or another Chromium browser is required.');
+    fail('Open this in Chrome.',
+         'Couch is a Chrome extension. Copy this link into Chrome or Edge and it ' +
+         'will pick up from here.',
+         false);
+    return;
+  }
+  setState('c-browser', 's-browser', 'ok', 'Looks good.');
+
+  // ---- extension presence --------------------------------------------------
+  //
+  // installed-marker.js (a content script that runs only on this site) stamps
+  // an attribute on <html>. It may land before or after this script, so we
+  // check immediately, listen for its event, and poll briefly as a backstop.
+
+  function installed() {
+    return document.documentElement.hasAttribute('data-couch-installed');
+  }
+
+  function proceed() {
+    var v = document.documentElement.getAttribute('data-couch-installed');
+    setState('c-ext', 's-ext', 'ok', v ? 'Version ' + v + '. Taking you in…' : 'Taking you in…');
+    $('status').textContent = 'All set. Opening the party…';
+    // replace() so Back returns to wherever they came from, not to this
+    // interstitial, which would just bounce them forward again.
+    setTimeout(function () { location.replace(dest.href); }, 550);
+  }
+
+  function notInstalled() {
+    setState('c-ext', 's-ext', 'bad', 'Not detected in this browser.');
+    fail('Almost there - install Couch first.',
+         'Couch needs to be installed to sync playback and join the call. ' +
+         'Install it, then open this same link again.',
+         true);
+    $('action-hint').textContent =
+      'Already installed? Make sure it is enabled, then reload this page.';
+  }
+
+  if (installed()) { proceed(); return; }
+
+  // Showing "not installed" is a guess that the extension would have announced
+  // itself by now, and on a cold profile or a slow machine that guess is wrong.
+  // So the install screen is recoverable: we keep watching afterwards and go
+  // straight in if the marker turns up late, rather than making someone who
+  // already has Couch sit there and reload.
+  var went = false;
+  var go = function () {
+    if (went) return;
+    went = true;
+    clearInterval(fastPoll);
+    clearInterval(slowPoll);
+    clearTimeout(giveUp);
+    proceed();
+  };
+
+  document.addEventListener('couch:installed', go);
+  var fastPoll = setInterval(function () { if (installed()) go(); }, 120);
+  var slowPoll = null;
+  var giveUp = setTimeout(function () {
+    if (installed()) { go(); return; }
+    clearInterval(fastPoll);
+    notInstalled();
+    // Keep a cheaper watch running in case it was just slow to start.
+    slowPoll = setInterval(function () { if (installed()) go(); }, 500);
+  }, 2500);
+})();
+</script>
+</body>
+</html>

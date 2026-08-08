@@ -16,6 +16,17 @@
     Permissions-Policy = "geolocation=(), microphone=(), camera=()"
 
 # Pretty URLs: allow /privacy and /terms without the .html extension.
+# The invite entry point. /join is what the extension puts in shared links, so
+# keep it short and stable; /invite is accepted as an alias.
+[[redirects]]
+  from = "/join"
+  to = "/invite.html"
+  status = 200
+[[redirects]]
+  from = "/invite"
+  to = "/invite.html"
+  status = 200
+
 [[redirects]]
   from = "/privacy"
   to = "/privacy.html"

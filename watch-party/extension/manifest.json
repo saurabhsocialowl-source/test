@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Couch - Watch Party",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Host watch parties on popular streaming sites - synced playback with built-in group chat, voice and video calls.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -25,7 +25,8 @@
     "*://*.hotstar.com/*",
     "*://*.jiohotstar.com/*",
     "*://*.disneyplus.com/*",
-    "*://*.zee5.com/*"
+    "*://*.zee5.com/*",
+    "*://tv.apple.com/*"
   ],
   "background": {
     "service_worker": "src/background.js"
@@ -39,7 +40,8 @@
         "*://*.hotstar.com/*",
         "*://*.jiohotstar.com/*",
         "*://*.disneyplus.com/*",
-        "*://*.zee5.com/*"
+        "*://*.zee5.com/*",
+        "*://tv.apple.com/*"
       ],
       "js": ["src/injected.js"],
       "run_at": "document_start",
@@ -54,11 +56,18 @@
         "*://*.hotstar.com/*",
         "*://*.jiohotstar.com/*",
         "*://*.disneyplus.com/*",
-        "*://*.zee5.com/*"
+        "*://*.zee5.com/*",
+        "*://tv.apple.com/*"
       ],
       "js": ["src/vendor/peerjs.min.js", "src/content.js"],
       "css": ["src/overlay/overlay.css"],
       "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": ["*://couch-watchparty.netlify.app/*"],
+      "js": ["src/installed-marker.js"],
+      "run_at": "document_start",
       "all_frames": false
     }
   ]

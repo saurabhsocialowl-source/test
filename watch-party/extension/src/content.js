@@ -185,6 +185,15 @@
       key: () => location.pathname,
       url: (k) => location.origin + k },
 
+    // Apple TV+ web player only. The Apple TV *app* on macOS/iOS/tvOS has no
+    // extension surface at all, so tv.apple.com in the browser is the whole of
+    // what any extension can reach. Keyed on the path because a canonical URL
+    // needs the locale and slug, not just the umc.cmc id.
+    { id: 'appletv', label: 'Apple TV', host: /(^|\.)tv\.apple\.com$/,
+      isWatch: () => /\/(movie|episode|show|watch)\//.test(location.pathname),
+      key: () => location.pathname,
+      url: (k) => location.origin + k },
+
     { id: 'zee5', label: 'ZEE5', host: /(^|\.)zee5\.com$/,
       isWatch: () => /\/(movies|tvshows|web-series|watch|videos)\//.test(location.pathname),
       key: () => location.pathname,
@@ -211,12 +220,20 @@
     if (room) u += (u.indexOf('?') === -1 ? '?' : '&') + 'couch=' + encodeURIComponent(room);
     return u;
   }
+  // Where invite links land first. Going through our own page means a friend
+  // who does not have Couch yet gets told so and gets an install link, instead
+  // of landing on the show and silently watching alone, which is what a direct
+  // streaming-site link does. The extension still accepts a direct
+  // ?couch=CODE link, so older invites keep working.
+  const INVITE_BASE = 'https://couch-watchparty.netlify.app/join';
+
   // Shareable invite: opens the host's title AND auto-joins the party.
   function inviteLink() {
     if (!state.room) return '';
     const vid = state.videoId || currentVideoId();
-    return vid ? watchUrl(vid, state.room)
-               : location.origin + '/?couch=' + state.room;
+    const dest = vid ? watchUrl(vid, state.room)
+                     : location.origin + '/?couch=' + state.room;
+    return INVITE_BASE + '?redirect=' + encodeURIComponent(dest);
   }
 
   // Remember the active party so we can auto-rejoin after a page navigation

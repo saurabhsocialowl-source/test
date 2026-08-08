@@ -88,17 +88,58 @@
     return score;
   }
 
+  // Collect every <video>, including ones inside open shadow roots. Apple TV
+  // builds its player out of custom elements, so a plain querySelectorAll on
+  // document finds nothing at all there. Closed shadow roots stay invisible to
+  // us by design; nothing can be done about those from a content script.
+  function allVideos() {
+    // Fast path: nearly every site keeps its player in the light DOM, and this
+    // runs several times a second. Only pay for the deep walk when the cheap
+    // query comes back empty (which is the Apple TV case).
+    const light = document.querySelectorAll('video');
+    if (light.length) return Array.prototype.slice.call(light);
+
+    const found = [];
+    const seen = new Set();
+    const walk = (root, depth) => {
+      if (!root || depth > 8) return;                 // cheap loop/runaway guard
+      let list;
+      try { list = root.querySelectorAll('video'); } catch (e) { return; }
+      for (const v of list) if (!seen.has(v)) { seen.add(v); found.push(v); }
+      let hosts;
+      try { hosts = root.querySelectorAll('*'); } catch (e) { return; }
+      for (const el of hosts) if (el.shadowRoot) walk(el.shadowRoot, depth + 1);
+    };
+    walk(document, 0);
+    return found;
+  }
+
+  // Re-scoring on every call is wasteful when several fire back to back (a
+  // media event alone triggers two). The winner cannot meaningfully change
+  // inside a few hundred ms, so memoize for that long.
+  let videoCache = { el: null, at: 0 };
+  const VIDEO_CACHE_MS = 250;
+
   function getVideoEl() {
-    const all = Array.prototype.slice.call(document.querySelectorAll('video'));
-    if (!all.length) return null;
-    if (all.length === 1) return all[0];
-    let best = null;
-    let bestScore = -Infinity;
-    for (const v of all) {
-      const s = scoreVideo(v);
-      if (s > bestScore) { bestScore = s; best = v; }
+    const now = Date.now();
+    if (videoCache.el && now - videoCache.at < VIDEO_CACHE_MS &&
+        videoCache.el.isConnected !== false) {
+      return videoCache.el;
     }
-    return bestScore < 0 ? null : best;
+    const all = allVideos();
+    let best = null;
+    if (all.length === 1) {
+      best = all[0];
+    } else if (all.length) {
+      let bestScore = -Infinity;
+      for (const v of all) {
+        const s = scoreVideo(v);
+        if (s > bestScore) { bestScore = s; best = v; }
+      }
+      if (bestScore < 0) best = null;
+    }
+    videoCache = { el: best, at: now };
+    return best;
   }
 
   // ---- Ad detection -----------------------------------------------------------

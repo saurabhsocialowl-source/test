@@ -27,6 +27,12 @@ class FakeVideo {
     this._own = { play: [], pause: [], seeked: [] };
   }
   addEventListener(type, fn) { (this._own[type] || []).push(fn); }
+  // Real elements report false once detached, which is what lets the video
+  // cache in injected.js know to re-pick. Mirror that or the cache hands back
+  // a node that is no longer in the page.
+  get isConnected() {
+    return dom.videos.indexOf(this) !== -1 || dom.shadowVideos.indexOf(this) !== -1;
+  }
   getBoundingClientRect() { return { width: this._w, height: this._h }; }
   play() { this.paused = false; dispatch('play', this); return Promise.resolve(); }
   pause() { this.paused = true; dispatch('pause', this); }
@@ -38,9 +44,21 @@ class FakeEl {
 }
 
 const dom = {
-  videos: [],
+  videos: [],          // light-DOM videos
+  shadowVideos: [],    // videos reachable only through an open shadow root
   adEl: null,          // set to a FakeEl to simulate an ad badge being rendered
 };
+
+// A stand-in for an open shadow root hanging off a custom element, which is how
+// Apple TV builds its player. Only reachable by walking, never by a plain
+// document.querySelectorAll('video').
+function shadowHost() {
+  return {
+    shadowRoot: {
+      querySelectorAll: (sel) => (sel === 'video' ? dom.shadowVideos : []),
+    },
+  };
+}
 
 const docListeners = { play: [], pause: [], seeked: [] };
 
@@ -51,7 +69,12 @@ function dispatch(type, target) {
 }
 
 global.document = {
-  querySelectorAll: (sel) => (sel === 'video' ? dom.videos : []),
+  querySelectorAll: (sel) => {
+    if (sel === 'video') return dom.videos;
+    // The deep walk asks for '*' to find shadow hosts.
+    if (sel === '*') return dom.shadowVideos.length ? [shadowHost()] : [];
+    return [];
+  },
   querySelector: (sel) => {
     if (sel === 'video') return dom.videos[0] || null;
     // Any of the ad selectors resolves to the ad element when one is present.
@@ -158,6 +181,32 @@ tick();
 const adDur = lastOfType('ad');
 check('short duration after long content reads as an ad',
       adDur && adDur.inAd === true, JSON.stringify(adDur));
+
+console.log('\n5. Apple TV shape: player only reachable through a shadow root');
+// Apple builds its player from custom elements, so a plain
+// querySelectorAll('video') on document can come back empty even mid-playback.
+// 'ready' is announced once per page and was already consumed above, so the
+// observable here is whether events from the shadow player reach peers at all.
+dom.videos = [];
+dom.shadowVideos = [];
+player.duration = 7200;
+posted.length = 0;
+tick();
+const orphan = new FakeVideo({ label: 'detached', paused: false, currentTime: 5 });
+orphan.pause();
+check('with no videos in the page, nothing is emitted', lastOfType('state') === null,
+      JSON.stringify(lastOfType('state')));
+
+const shadowPlayer = new FakeVideo({ label: 'shadow-player', paused: false, currentTime: 600 });
+dom.shadowVideos = [shadowPlayer];
+posted.length = 0;
+tick();
+shadowPlayer.pause();
+const sst = lastOfType('state');
+check('a video inside a shadow root is found, and pausing it propagates',
+      sst && sst.action === 'pause', JSON.stringify(sst));
+check('  ...at its own position (600s)', sst && sst.timeMs === 600000,
+      sst && String(sst.timeMs));
 
 console.log(failures === 0
   ? '\nAll checks passed.\n'

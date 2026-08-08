@@ -3,7 +3,7 @@
 _Last updated: 2026-07-07_
 
 Couch ("the extension") is a browser extension that lets friends watch Netflix,
-YouTube, Prime Video, JioHotstar, Disney+, or ZEE5 in sync, with a group chat,
+YouTube, Prime Video, JioHotstar, Disney+, ZEE5 or Apple TV in sync, with a group chat,
 voice, and video call. This policy explains what data the extension touches and
 what it does not.
 
@@ -51,7 +51,7 @@ recorded, inspected, or stored.
 - **`storage`** - to remember your display name and optional broker setting on
   your own device.
 - **Access to the supported streaming sites** (Netflix, YouTube, Prime Video,
-  JioHotstar, Disney+, ZEE5) - so the extension can run on their watch pages,
+  JioHotstar, Disney+, ZEE5, Apple TV) - so the extension can run on their watch pages,
   show the call/chat overlay, and synchronize the player. It is not active on
   any other website.
 
