@@ -117,6 +117,10 @@
     watchdogTimer: null,      // self-healing broker/host reconnection loop
     beaconPeer: null,         // standby "front door" if the real host has left (see below)
     needSyncRequest: false,   // set true after joining via a beacon (no host to ask directly)
+    selfInAd: false,          // we are inside an ad break
+    peersInAd: new Set(),     // peerIds currently inside an ad break
+    heldForAd: false,         // we auto-paused to wait for someone's ad, so we may auto-resume
+    driftTimer: null,         // host-side periodic position beacon
   };
 
   // ------------------------------------------------------------------ utils ---
@@ -272,7 +276,81 @@
       if (Date.now() - state.lastAppliedAt < 400) return; // don't echo applied state
       broadcast({ t: 'sync', action: d.action, paused: d.paused, timeMs: d.timeMs });
     }
+    if (d.type === 'ad') {
+      // Our own ad break started or ended. Peers cannot see it, so tell them:
+      // ad pods differ per account and per tier, and without this the people
+      // without an ad simply run ahead by the length of ours.
+      state.selfInAd = !!d.inAd;
+      if (state.inParty) broadcast({ t: 'ad', inAd: state.selfInAd, timeMs: d.timeMs });
+      reconcileAdHold(d.timeMs);
+    }
+    if (d.type === 'blocked' && d.reason === 'autoplay') {
+      toast('Chrome blocked playback. Click the video once to let Couch resume it.');
+    }
+    if (d.type === 'position' && state.inParty && state.isHost) {
+      if (d.inAd || d.paused) return;   // nothing useful to anchor to
+      broadcast({ t: 'drift', timeMs: d.timeMs, paused: d.paused });
+    }
   });
+
+  // ------------------------------------------------------ drift correction ----
+  //
+  // Event-driven sync alone lets small gaps accumulate: different buffering,
+  // a dropped frame here, a slow seek there. The host publishes its position
+  // every few seconds and anyone who has slipped past the tolerance closes the
+  // gap quietly. Followers ignore it while paused or inside an ad.
+
+  const DRIFT_BEAT_MS = 5000;
+
+  function startDriftBeat() {
+    stopDriftBeat();
+    if (!state.isHost) return;
+    state.driftTimer = setInterval(() => {
+      if (!state.inParty || !state.isHost) return;
+      if (state.selfInAd || state.peersInAd.size) return;  // ad logic owns this
+      sendToPage({ type: 'request-position' });
+    }, DRIFT_BEAT_MS);
+  }
+
+  function stopDriftBeat() {
+    if (state.driftTimer) { clearInterval(state.driftTimer); state.driftTimer = null; }
+  }
+
+  function applyDriftCorrection(msg) {
+    if (state.isHost) return;                       // host is the reference
+    if (state.selfInAd || state.heldForAd) return;  // ad logic owns this
+    sendToPage({ type: 'drift', timeMs: msg.timeMs, paused: msg.paused });
+  }
+
+  // ----------------------------------------------------------- ad breaks ------
+  //
+  // Rule: while ANY participant is inside an ad break, everybody else holds.
+  // When the last ad finishes, that viewer's content position is the truth and
+  // everyone seeks there and resumes together.
+
+  function anyoneInAd() { return state.selfInAd || state.peersInAd.size > 0; }
+
+  function reconcileAdHold(resumeTimeMs) {
+    if (!state.inParty) return;
+    if (anyoneInAd()) {
+      // Someone is in an ad. If it is not us, hold here until they are back.
+      if (!state.selfInAd && !state.heldForAd) {
+        state.heldForAd = true;
+        applyRemoteSync({ action: 'pause' });
+        const who = state.peersInAd.size === 1
+          ? (state.members.get([...state.peersInAd][0])?.name || 'Someone')
+          : 'Some viewers';
+        toast(`${who} hit an ad break. Holding until it finishes.`);
+      }
+      return;
+    }
+    // Nobody is in an ad any more.
+    if (state.heldForAd) {
+      state.heldForAd = false;
+      toast('Ad break over. Resuming together.');
+      applyRemoteSync({ action: 'play', timeMs: resumeTimeMs });
+    }
+  }
 
   // ------------------------------------------------------- PeerJS plumbing ----
 
@@ -538,6 +616,14 @@
       case 'sync':
         applyRemoteSync(msg);
         break;
+      case 'ad':
+        if (msg.inAd) state.peersInAd.add(fromId);
+        else state.peersInAd.delete(fromId);
+        reconcileAdHold(msg.timeMs);
+        break;
+      case 'drift':
+        applyDriftCorrection(msg);
+        break;
       case 'sync-request':
         sendToPage({ type: 'request-state' });
         break;
@@ -583,6 +669,10 @@
     try { if (m.dataConn) m.dataConn.close(); } catch (e) {}
     if (m.tile) m.tile.remove();
     state.members.delete(peerId);
+    // Forget any ad they were in. Otherwise someone who closes the tab mid-ad
+    // leaves the rest of the party held forever waiting for a break that ended
+    // when they left.
+    if (state.peersInAd.delete(peerId)) reconcileAdHold();
     if (announce) broadcast({ t: 'peer-left', peerId });
     // If the peer we just lost WAS the room's front door, the room becomes
     // unjoinable for anyone new (existing members stay meshed to each other
@@ -1286,6 +1376,7 @@
     await initPeer();
     startTitlePoll();
     startWatchdog();
+    startDriftBeat();
     persistActive();
     render(); saveStatus();
     return { room: state.room };
@@ -1300,6 +1391,10 @@
     stopBeacon();
     stopTitlePoll();
     stopWatchdog();
+    stopDriftBeat();
+    state.peersInAd.clear();
+    state.selfInAd = false;
+    state.heldForAd = false;
     state.videoId = null;
     if (state.localStream) state.localStream.getTracks().forEach((t) => t.stop());
     state.localStream = null;
