@@ -372,7 +372,13 @@
   // ------------------------------------------------------- PeerJS plumbing ----
 
   function peerOptions(iceServers) {
-    const opts = { debug: 1, config: { iceServers } };
+    // State the broker key explicitly rather than leaning on the PeerJS
+    // default. It has to match the server's KEY, and relying on both ends
+    // defaulting to the same string is how a routine restart silently took
+    // the broker offline once: the server was restarted without KEY set, fell
+    // back to its own default, and rejected every client with
+    // "Invalid key provided". Same value as before, just no longer implicit.
+    const opts = { debug: 1, key: 'peerjs', config: { iceServers } };
     if (state.brokerHost) {
       // Accept "host", "host:port" or "wss://host:port/path".
       let h = state.brokerHost.replace(/^wss?:\/\//, '');

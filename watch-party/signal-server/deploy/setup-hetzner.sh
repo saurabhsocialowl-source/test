@@ -30,8 +30,11 @@ npm install --omit=dev
 
 echo "==> 2/5 Starting the broker on 127.0.0.1:$PORT"
 if command -v pm2 >/dev/null 2>&1; then
-  HOST=127.0.0.1 PORT="$PORT" pm2 restart couch-signal --update-env 2>/dev/null \
-    || HOST=127.0.0.1 PORT="$PORT" pm2 start server.js --name couch-signal
+  # KEY is passed explicitly because `--update-env` replaces the environment
+  # wholesale: anything omitted here is dropped and falls back to the server's
+  # own default. It must stay in step with the extension (see server.js).
+  HOST=127.0.0.1 PORT="$PORT" KEY="${KEY:-peerjs}" pm2 restart couch-signal --update-env 2>/dev/null \
+    || HOST=127.0.0.1 PORT="$PORT" KEY="${KEY:-peerjs}" pm2 start server.js --name couch-signal
   pm2 save
 else
   sed "s#/opt/couch/watch-party/signal-server#$DIR/watch-party/signal-server#; s/^Environment=HOST=.*/Environment=HOST=127.0.0.1/" \

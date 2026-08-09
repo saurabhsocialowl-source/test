@@ -35,7 +35,15 @@ const { PeerServer } = require('peer');
 const PORT = Number(process.env.PORT || 9000);
 const HOST = process.env.HOST || '0.0.0.0';       // IPv4 by default (avoids IPv6-only bind)
 const PATH_PREFIX = process.env.PATH_PREFIX || '/';
-const KEY = process.env.KEY || 'couch';
+// DO NOT change this default. It is a wire-protocol constant shared with every
+// copy of the extension already installed out there, and the extension has no
+// way to learn a new value. v0.5.0 changed it from 'peerjs' to 'couch'; the
+// change looked harmless only because this box was pinned to an older commit,
+// and the moment it was pulled forward every client was rejected with
+// "Invalid key provided" and hung on "Connecting...". Changing it again means
+// shipping a matching extension release first and waiting for everyone to
+// update, which is not worth it to rename a string.
+const KEY = process.env.KEY || 'peerjs';
 const CREDS_PORT = Number(process.env.CREDS_PORT || 9001);
 const TURN_SECRET = process.env.TURN_SECRET || '';
 const TURN_TTL = Number(process.env.TURN_TTL_SECONDS || 21600); // 6h - long-lived P2P session, not a short call setup

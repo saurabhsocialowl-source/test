@@ -67,7 +67,14 @@ cd "$DIR" && npm install --omit=dev
 
 echo "==> 3/5 Restarting the signal server with TURN_SECRET set"
 if command -v pm2 >/dev/null 2>&1; then
-  HOST=127.0.0.1 PORT=9000 CREDS_PORT=9001 TURN_SECRET="$SECRET" pm2 restart couch-signal --update-env
+  # KEY must be passed explicitly. `--update-env` REPLACES the process
+  # environment, so any variable omitted here is silently dropped and the
+  # server falls back to its own default. Leaving KEY out once already took
+  # the broker down: it fell back to "couch" while every deployed extension
+  # sends the PeerJS default "peerjs", so registration was rejected with
+  # "Invalid key provided" and clients hung on "Connecting...".
+  HOST=127.0.0.1 PORT=9000 CREDS_PORT=9001 KEY="${KEY:-peerjs}" \
+    TURN_SECRET="$SECRET" pm2 restart couch-signal --update-env
   pm2 save
 else
   echo "PM2 not found - set HOST/PORT/CREDS_PORT/TURN_SECRET in your service manager and restart couch-signal manually."
